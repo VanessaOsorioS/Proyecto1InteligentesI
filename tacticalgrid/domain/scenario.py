@@ -23,6 +23,7 @@ class Scenario:
         bases: Posición de la base de cada bando ('A' y 'B').
         recurso: Posición inicial del recurso en el tablero.
         profundidad_maxima_minimax: Profundidad opcional para Minimax.
+        max_turnos: Límite de turnos ejecutados antes del empate (por defecto 200).
         prueba: Bloque opcional de configuración de pruebas (se conserva tal cual).
     """
 
@@ -31,6 +32,7 @@ class Scenario:
     bases: Mapping[str, Position]
     recurso: Position
     profundidad_maxima_minimax: int | None = None
+    max_turnos: int = 200
     prueba: Mapping[str, Any] | None = None
 
     def __post_init__(self):
@@ -93,6 +95,9 @@ class Scenario:
                 raise ValueError(
                     "La profundidad máxima de Minimax debe ser un entero positivo."
                 )
+
+        if type(self.max_turnos) is not int or self.max_turnos < 1:
+            raise ValueError("El límite de turnos debe ser un entero positivo.")
 
         if self.prueba is not None and not isinstance(self.prueba, Mapping):
             raise ValueError("El bloque 'prueba' debe ser un mapeo.")

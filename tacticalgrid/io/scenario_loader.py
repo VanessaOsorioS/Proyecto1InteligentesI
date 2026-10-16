@@ -104,7 +104,6 @@ def construir_modelo(datos: dict) -> ModeloEscenario:
         unidades=unidades,
         turno=datos["turno"],
         portador=juego["portador_recurso"],
-        posicion_recurso=recurso,
     )
 
     return ModeloEscenario(scenario=scenario, estado=estado)

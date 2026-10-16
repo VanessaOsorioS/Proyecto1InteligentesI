@@ -1,8 +1,9 @@
 """Estado de la partida (datos puros, inmutable).
 
 Representa la situación dinámica del juego: las unidades, el turno, el portador
-del recurso, la posición del recurso y los contadores usados para las reglas de
-empate. Es inmutable: cada cambio produce un estado nuevo.
+del recurso y los contadores usados para las reglas de empate. Es inmutable:
+cada cambio produce un estado nuevo. La posición de origen del recurso vive en
+`Scenario`; aquí solo importa si alguien lo transporta (`portador`).
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +22,6 @@ class GameState:
         unidades: Tupla con todas las unidades (cantidad dinámica).
         turno: Bando al que le corresponde jugar ('A' o 'B').
         portador: Identificador de la unidad que transporta el recurso, o None.
-        posicion_recurso: Posición del recurso cuando nadie lo transporta.
         numero_turno: Cantidad de turnos ejecutados (empieza en 1).
         pases_consecutivos: Pases consecutivos registrados (empieza en 0).
         contadores: Conteo derivado de unidades por bando (calculado).
@@ -30,7 +30,6 @@ class GameState:
     unidades: tuple[Unit, ...]
     turno: str
     portador: str | None
-    posicion_recurso: Position
     numero_turno: int = 1
     pases_consecutivos: int = 0
     contadores: Mapping[str, int] = field(init=False, default_factory=dict)
@@ -62,9 +61,6 @@ class GameState:
 
         if self.turno not in ("A", "B"):
             raise ValueError("El turno debe ser 'A' o 'B'.")
-
-        if not isinstance(self.posicion_recurso, Position):
-            raise ValueError("La posición del recurso debe ser una Position.")
 
         # Regla: una unidad por celda (sin posiciones duplicadas).
         ocupadas = set()
@@ -156,16 +152,16 @@ class GameState:
         portador = self.unidad(self.portador)
         return portador.posicion if portador is not None else None
 
-    def posicion_recurso_efectiva(self) -> Position:
+    def posicion_recurso_efectiva(self, recurso: Position) -> Position:
         """
         Purpose:
-            Indicar dónde está el recurso: en el portador o en su celda.
+            Indicar dónde está el recurso: en el portador o en su celda de origen.
 
         Preconditions:
-            El estado es válido.
+            `recurso` es la Position de origen del recurso (tomada de `Scenario`).
 
         Postconditions:
-            Devuelve la posición del portador si existe; si no, la del recurso.
+            Devuelve la posición del portador si existe; si no, la celda `recurso`.
 
         Complexity:
             O(U).
@@ -175,7 +171,7 @@ class GameState:
             posicion = self.posicion_portador()
             if posicion is not None:
                 return posicion
-        return self.posicion_recurso
+        return recurso
 
     def portador_en_base(self, bases: Mapping[str, Position]) -> bool:
         """
@@ -226,7 +222,6 @@ class GameState:
             unidades=self.unidades,
             turno=self.turno,
             portador=portador,
-            posicion_recurso=self.posicion_recurso,
             numero_turno=self.numero_turno,
             pases_consecutivos=self.pases_consecutivos,
         )

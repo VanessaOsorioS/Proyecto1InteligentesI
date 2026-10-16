@@ -30,8 +30,7 @@ from tacticalgrid.domain.scenario import Scenario
 from tacticalgrid.domain.state import GameState
 from tacticalgrid.domain.unit import Unit
 
-LIMITE_TURNOS = 100
-LIMITE_PASES_CONSECUTIVOS = 3
+LIMITE_PASES_CONSECUTIVOS = 4
 
 DIRECCIONES_ORTOGONALES = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
@@ -125,8 +124,9 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
         `estado` es un GameState válido y `scenario` describe el tablero y las bases.
 
     Postconditions:
-        Devuelve una tupla de acciones legales (Mover, Transferir, Interceptar,
-        Pasar). Si la partida ya terminó, devuelve una tupla vacía.
+        Devuelve una tupla de acciones legales (Mover, Transferir, Interceptar).
+        `Pasar` solo aparece cuando el bando no tiene ninguna otra acción legal
+        disponible. Si la partida ya terminó, devuelve una tupla vacía.
 
     Complexity:
         O(U^2), donde U es el número de unidades.
@@ -165,7 +165,9 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
             if es_adyacente(unidad.posicion, portador.posicion):
                 acciones.append(Interceptar(unidad.id))
 
-    acciones.append(Pasar())
+    # El pase solo es legal cuando el bando no tiene otra acción disponible.
+    if not acciones:
+        acciones.append(Pasar())
     return tuple(acciones)
 
 
@@ -185,7 +187,6 @@ def _avanzar_turno(
         unidades=unidades,
         turno="B" if estado.turno == "A" else "A",
         portador=portador,
-        posicion_recurso=estado.posicion_recurso,
         numero_turno=estado.numero_turno + 1,
         pases_consecutivos=pases_consecutivos,
     )
@@ -223,8 +224,8 @@ def aplicar_accion(
 
         portador = estado.portador
         # Recolección automática: si nadie transporta el recurso y la unidad
-        # se mueve a la celda del recurso, lo recoge.
-        if portador is None and accion.destino == estado.posicion_recurso:
+        # se mueve a la celda de origen del recurso, lo recoge.
+        if portador is None and accion.destino == scenario.recurso:
             portador = accion.unidad_id
 
         return _avanzar_turno(estado, unidades, portador, 0)
@@ -267,7 +268,7 @@ def resultado_partida(estado: GameState, scenario: Scenario) -> Resultado | None
         portador = estado.unidad(estado.portador)
         return Resultado(True, portador.bando, "victoria")
 
-    if estado.numero_turno > LIMITE_TURNOS:
+    if estado.numero_turno > scenario.max_turnos:
         return Resultado(True, None, "empate_limite_turnos")
 
     if estado.pases_consecutivos >= LIMITE_PASES_CONSECUTIVOS:
