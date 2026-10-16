@@ -36,11 +36,6 @@ class Unit:
         Complexity:
             O(1).
 
-        AI usage: Yes
-        AI intervention:
-            Validaciones propuestas con asistencia de IA a partir del modelo
-            de Position y Terrain existente.
-
         """
         if not isinstance(self.id, str) or not self.id:
             raise ValueError("La unidad necesita un identificador válido.")

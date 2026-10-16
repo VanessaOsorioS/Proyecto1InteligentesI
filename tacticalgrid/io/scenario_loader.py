@@ -57,12 +57,6 @@ def construir_modelo(datos: dict) -> ModeloEscenario:
     Complexity:
         O(F * C + U + T), F filas, C columnas, U unidades, T tipos de terreno.
 
-    AI usage: Yes
-    AI intervention:
-        Adaptador dict -> dominio propuesto con asistencia de IA, reutilizando
-        las entidades existentes (Board, Terrain, Position).
-
-   
     """
     terrenos = {
         nombre: Terrain(nombre, configuracion["transitable"], configuracion.get("costo"))
@@ -130,10 +124,6 @@ def cargar_modelo(path: str) -> ModeloEscenario:
 
     Complexity:
         O(F * C + U + T), la del cargador más la construcción del modelo.
-
-    AI usage: Yes
-    AI intervention:
-        Función de conveniencia propuesta con asistencia de IA.
 
     """
     return construir_modelo(load_scenario(path))

@@ -51,13 +51,6 @@ class GameState:
         Complexity:
             O(U), donde U es el número de unidades.
 
-        AI usage: Yes
-        AI intervention:
-            Validaciones (una unidad por celda, portador existente) y conteo por
-            bando propuestos con asistencia de IA a partir de las reglas del
-            equipo.
-
-        
         """
         if not isinstance(self.unidades, (tuple, list)):
             raise ValueError("Las unidades deben ser una secuencia.")
@@ -120,11 +113,6 @@ class GameState:
         Complexity:
             O(U).
 
-        AI usage: Yes
-        AI intervention:
-            Método de consulta propuesto con asistencia de IA.
-
-        
         """
         return tuple(unidad for unidad in self.unidades if unidad.bando == bando)
 
@@ -142,11 +130,6 @@ class GameState:
         Complexity:
             O(U).
 
-        AI usage: Yes
-        AI intervention:
-            Método de consulta propuesto con asistencia de IA.
-
-       
         """
         for unidad in self.unidades:
             if unidad.id == id_unidad:
@@ -166,10 +149,6 @@ class GameState:
 
         Complexity:
             O(U).
-
-        AI usage: Yes
-        AI intervention:
-            Apoyo a la regla de victoria propuesto con asistencia de IA.
 
         """
         if self.portador is None:
@@ -191,12 +170,6 @@ class GameState:
         Complexity:
             O(U).
 
-        AI usage: Yes
-        AI intervention:
-            Apoyo a la regla de recolección automática propuesto con asistencia
-            de IA.
-
-        
         """
         if self.portador is not None:
             posicion = self.posicion_portador()
@@ -219,12 +192,6 @@ class GameState:
         Complexity:
             O(U).
 
-        AI usage: Yes
-        AI intervention:
-            Apoyo a la regla de victoria al llegar a la base, propuesto con
-            asistencia de IA.
-
-       
         """
         if self.portador is None:
             return False
@@ -254,12 +221,6 @@ class GameState:
         Complexity:
             O(U) por la validación del nuevo estado.
 
-        AI usage: Yes
-        AI intervention:
-            Apoyo a las reglas de transferencia e intercepción, propuesto con
-            asistencia de IA.
-
-        
         """
         return GameState(
             unidades=self.unidades,

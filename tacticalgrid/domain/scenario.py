@@ -49,12 +49,6 @@ class Scenario:
         Complexity:
             O(B), donde B es el número de posiciones de base (constante).
 
-        AI usage: Yes
-        AI intervention:
-            Estructura y congelamiento de contenedores propuestos con asistencia
-            de IA siguiendo el patrón frozen de Board.
-
-       
         """
         if not isinstance(self.version, str) or not self.version:
             raise ValueError("La versión del escenario debe ser un texto no vacío.")
