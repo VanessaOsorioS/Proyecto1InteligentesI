@@ -11,6 +11,36 @@ from tacticalgrid.domain.board import Board
 from tacticalgrid.domain.terrain import Terrain
 from tacticalgrid.io.scenario_loader import load_scenario
 
+ALGORITMOS_DISPONIBLES = (
+    "BFS",
+    "DFS",
+    "UCS",
+    "A*",
+    "Beam k=1",
+    "Beam k=2",
+    "Beam k=4",
+    "Beam k=8",
+)
+
+
+def algoritmos_disponibles() -> tuple[str, ...]:
+    """
+    Purpose:
+        Exponer los algoritmos de búsqueda que la interfaz puede ofrecer.
+
+    Preconditions:
+        Ninguna.
+
+    Postconditions:
+        Devuelve una tupla inmutable con las etiquetas seleccionables.
+        Es la única fuente del catálogo; la UI no conoce `search/`.
+
+    Complexity:
+        O(1).
+
+    """
+    return ALGORITMOS_DISPONIBLES
+
 
 @dataclass(frozen=True)
 class UnidadVista:

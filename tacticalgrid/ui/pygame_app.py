@@ -7,13 +7,17 @@ import pygame
 import tkinter
 from tkinter import filedialog
 
-from tacticalgrid.app.controller import cargar_escenario, ScenarioVista
+from tacticalgrid.app.controller import (
+    cargar_escenario,
+    algoritmos_disponibles,
+    ScenarioVista,
+)
 from tacticalgrid.io.scenario_validator import ScenarioValidationError
 from tacticalgrid.ui import panels, renderer
 
 
 class PygameApp:
-    """Ventana de visualización del tablero con botón para cargar JSON."""
+    """Ventana de visualización del tablero con carga de JSON y selección de algoritmo."""
 
     def __init__(self, ruta_inicial: str | None = None, tamano=(1100, 720)):
         pygame.init()
@@ -41,6 +45,9 @@ class PygameApp:
         self.vista: ScenarioVista | None = None
         self.error: str | None = None
         self.boton = None
+        self.algoritmos = algoritmos_disponibles()
+        self.botones_algoritmos = ()
+        self.algoritmo_seleccionado: str | None = None
 
         if ruta_inicial and os.path.exists(ruta_inicial):
             self.cargar(ruta_inicial)
@@ -99,6 +106,11 @@ class PygameApp:
                     ruta = self._elegir_archivo()
                     if ruta:
                         self.cargar(ruta)
+                elif self.vista is not None:
+                    for boton in self.botones_algoritmos:
+                        if boton.contiene(evento.pos):
+                            self.algoritmo_seleccionado = boton.clave
+                            break
 
     def _elegir_archivo(self) -> str | None:
         """Abre el diálogo nativo para seleccionar un archivo .json."""
@@ -123,6 +135,11 @@ class PygameApp:
 
         rect_panel = panels.calcular_panel(ancho, alto)
         self.boton = panels.construir_boton(rect_panel)
+        self.botones_algoritmos = panels.construir_botones_algoritmos(
+            rect_panel,
+            self.boton.rect.bottom + 34,
+            self.algoritmos,
+        )
 
         if self.vista is not None:
             layout = renderer.calcular_layout(
@@ -146,5 +163,7 @@ class PygameApp:
             self.fuentes,
             self.boton,
             self.error,
+            self.botones_algoritmos,
+            self.algoritmo_seleccionado,
         )
         pygame.display.flip()

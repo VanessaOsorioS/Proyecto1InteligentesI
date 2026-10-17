@@ -8,9 +8,12 @@ from tacticalgrid.ui.renderer import (
     ANCHO_PANEL,
     COLOR_BORDE,
     COLOR_BOTON,
+    COLOR_BOTON_DESHABILITADO,
     COLOR_BOTON_HOVER,
+    COLOR_BOTON_SELECCIONADO,
     COLOR_PANEL,
     COLOR_TEXTO,
+    COLOR_TEXTO_DESHABILITADO,
     COLOR_TEXTO_SUAVE,
     COLOR_TERRENO,
     COLOR_TERRENO_DEFECTO,
@@ -18,11 +21,12 @@ from tacticalgrid.ui.renderer import (
 
 
 class Boton:
-    """Zona rectangular clicable con una etiqueta."""
+    """Zona rectangular clicable con una etiqueta y una clave opcional."""
 
-    def __init__(self, rect: pygame.Rect, texto: str):
+    def __init__(self, rect: pygame.Rect, texto: str, clave: str | None = None):
         self.rect = rect
         self.texto = texto
+        self.clave = clave
 
     def contiene(self, posicion) -> bool:
         """Indica si un punto de pantalla cae dentro del botón."""
@@ -46,25 +50,115 @@ def construir_boton(rect_panel: pygame.Rect) -> Boton:
     return Boton(rect, "Cargar JSON")
 
 
-def dibujar_panel(pantalla, vista, rect_panel, fuentes, boton, error) -> None:
+def construir_botones_algoritmos(
+    rect_panel: pygame.Rect,
+    y_inicio: int,
+    nombres,
+    columnas: int = 2,
+) -> tuple[Boton, ...]:
     """
     Purpose:
-        Dibujar el panel lateral con el botón, el estado y la leyenda.
+        Crear los botones de selección de algoritmo como una rejilla compacta.
+
+    Preconditions:
+        `nombres` es una secuencia de etiquetas; `columnas` >= 1.
+
+    Postconditions:
+        Devuelve los Boton en orden fila por fila, cada uno con su clave igual
+        a su etiqueta. No dibuja nada ni modifica `rect_panel`.
+
+    Complexity:
+        O(N), N cantidad de algoritmos.
+
+    """
+    columnas = max(1, columnas)
+    espacio = 8
+    alto = 28
+    ancho_util = rect_panel.width - 32
+    ancho = (ancho_util - espacio * (columnas - 1)) // columnas
+
+    botones = []
+    for indice, nombre in enumerate(nombres):
+        fila, columna = divmod(indice, columnas)
+        rect = pygame.Rect(
+            rect_panel.x + 16 + columna * (ancho + espacio),
+            y_inicio + fila * (alto + espacio),
+            ancho,
+            alto,
+        )
+        botones.append(Boton(rect, nombre, nombre))
+
+    return tuple(botones)
+
+
+def dibujar_algoritmos(pantalla, fuentes, botones, seleccionado, habilitado) -> int:
+    """
+    Purpose:
+        Dibujar los botones de algoritmo resaltando el seleccionado.
+
+    Preconditions:
+        `botones` es una secuencia de Boton; `seleccionado` es str o None.
+
+    Postconditions:
+        Si `habilitado` es falso los botones se muestran atenuados y no
+        responden al puntero. Devuelve la siguiente Y libre bajo la rejilla.
+
+    Complexity:
+        O(N), N cantidad de botones.
+
+    """
+    if not botones:
+        return 0
+
+    encima = pygame.mouse.get_pos()
+    fuente = fuentes["pequena"]
+
+    for boton in botones:
+        if not habilitado:
+            color = COLOR_BOTON_DESHABILITADO
+            color_texto = COLOR_TEXTO_DESHABILITADO
+        elif boton.clave == seleccionado:
+            color = COLOR_BOTON_SELECCIONADO
+            color_texto = COLOR_TEXTO
+        elif boton.contiene(encima):
+            color = COLOR_BOTON_HOVER
+            color_texto = COLOR_TEXTO
+        else:
+            color = COLOR_BOTON
+            color_texto = COLOR_TEXTO
+
+        pygame.draw.rect(pantalla, color, boton.rect, border_radius=7)
+        etiqueta = fuente.render(boton.texto, True, color_texto)
+        pantalla.blit(etiqueta, etiqueta.get_rect(center=boton.rect.center))
+
+    ultima_fila = max(boton.rect.bottom for boton in botones)
+    return ultima_fila + 8
+
+
+def dibujar_panel(
+    pantalla,
+    vista,
+    rect_panel,
+    fuentes,
+    boton,
+    error,
+    botones_algoritmos=(),
+    algoritmo_seleccionado=None,
+) -> None:
+    """
+    Purpose:
+        Dibujar el panel lateral con el botón, los algoritmos y el estado.
 
     Preconditions:
         `rect_panel` delimita el área; `boton` es un Boton; `error` es str o None.
+        `botones_algoritmos` son los botones de algoritmo (habilitados si hay vista).
 
     Postconditions:
         El panel queda dibujado; no se modifica ninguno de los argumentos.
 
     Complexity:
-        O(T + U), T tipos de terreno, U unidades.
+        O(T + U + N), T terrenos, U unidades, N algoritmos.
 
-    AI usage: Yes
-    AI intervention:
-        Composición del panel propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     pygame.draw.rect(pantalla, COLOR_PANEL, rect_panel)
     pygame.draw.line(
@@ -76,10 +170,22 @@ def dibujar_panel(pantalla, vista, rect_panel, fuentes, boton, error) -> None:
     )
 
     _dibujar_boton(pantalla, boton, fuentes["texto"])
-    y = boton.rect.bottom + 18
+    y = boton.rect.bottom + 12
+
+    if botones_algoritmos:
+        y = _dibujar_texto(
+            pantalla, "Algoritmo", fuentes["texto"], COLOR_TEXTO, rect_panel, y, 6
+        )
+        y = dibujar_algoritmos(
+            pantalla,
+            fuentes,
+            botones_algoritmos,
+            algoritmo_seleccionado,
+            vista is not None,
+        )
 
     if error:
-        y = _dibujar_texto(pantalla, error, fuentes["texto"], COLOR_TEXTO, rect_panel, y)
+        _dibujar_texto(pantalla, error, fuentes["texto"], COLOR_TEXTO, rect_panel, y)
         return
 
     if vista is None:
@@ -93,7 +199,9 @@ def dibujar_panel(pantalla, vista, rect_panel, fuentes, boton, error) -> None:
         )
         return
 
-    y = _dibujar_hud(pantalla, vista, fuentes, rect_panel, y)
+    y = _dibujar_hud(
+        pantalla, vista, fuentes, rect_panel, y, algoritmo_seleccionado
+    )
     _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y + 10)
 
 
@@ -106,13 +214,14 @@ def _dibujar_boton(pantalla, boton, fuente) -> None:
     pantalla.blit(etiqueta, etiqueta.get_rect(center=boton.rect.center))
 
 
-def _dibujar_hud(pantalla, vista, fuentes, rect_panel, y) -> int:
+def _dibujar_hud(pantalla, vista, fuentes, rect_panel, y, algoritmo=None) -> int:
     """Dibuja los datos generales del escenario y devuelve la siguiente Y."""
     lineas = [
         ("Tablero", f"{vista.filas} x {vista.columnas}"),
         ("Turno", vista.turno),
         ("Portador", vista.portador or "ninguno"),
         ("Unidades", str(len(vista.unidades))),
+        ("Algoritmo", algoritmo or "ninguno"),
         ("Archivo", os.path.basename(vista.ruta)),
     ]
     for etiqueta, valor in lineas:
