@@ -44,10 +44,6 @@ def bfs(problema: Problema) -> ResultadoBusqueda:
         la estructura de sucesores y el almacenamiento
         del árbol de búsqueda.
 
-    AI usage: Yes
-    AI intervention:
-        Adaptación del ejemplo BFS del profesor al contrato
-        Problema y a las métricas de TacticalGrid.
 
     Student validation:
         Pendiente de ejecución y validación del equipo.
