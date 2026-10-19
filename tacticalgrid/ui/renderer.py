@@ -55,6 +55,13 @@ class LayoutTablero:
             round(self.lado),
         )
 
+    def centro(self, fila: float, columna: float) -> tuple[float, float]:
+        """Centro en píxeles de una posición, admitiendo valores fraccionarios."""
+        return (
+            self.x + (columna + 0.5) * self.lado,
+            self.y + (fila + 0.5) * self.lado,
+        )
+
 
 def calcular_layout(
     ancho_area: int,
@@ -77,14 +84,25 @@ def calcular_layout(
     return LayoutTablero(x, y, lado)
 
 
-def dibujar_tablero(pantalla, vista, layout, fuentes, imagen_recurso=None) -> None:
+def dibujar_tablero(
+    pantalla,
+    vista,
+    layout,
+    fuentes,
+    imagen_recurso=None,
+    previas=None,
+    progreso=1.0,
+    recogida=False,
+) -> None:
     """
     Purpose:
         Dibujar el tablero, terrenos, bases, recurso y unidades de la vista.
 
     Preconditions:
         `vista` es un ScenarioVista y `fuentes` un dict de pygame.font.Font.
-        `imagen_recurso` es una Surface opcional para el recurso.
+        `imagen_recurso` es una Surface opcional para el recurso. `previas` es
+        un dict id -> (fila, columna) de la posición anterior y `progreso` en
+        [0, 1] indica cuánto se ha desplazado cada ficha hacia la actual.
 
     Postconditions:
         El tablero queda dibujado en `pantalla`; no se modifica `vista`.
@@ -114,9 +132,22 @@ def dibujar_tablero(pantalla, vista, layout, fuentes, imagen_recurso=None) -> No
 
             pygame.draw.rect(pantalla, COLOR_BORDE_CELDA, rect, 1)
 
+    # Durante el paso en que la unidad recoge el recurso, la bandera grande
+    # sigue en su casilla de origen y la pequeña aparece solo al terminar.
+    en_recogida = recogida and progreso < 1.0
+
     _dibujar_bases(pantalla, vista, layout, fuentes["id"])
-    _dibujar_recurso(pantalla, vista, layout, imagen_recurso)
-    _dibujar_unidades(pantalla, vista, layout, fuentes["id"])
+    _dibujar_recurso(pantalla, vista, layout, imagen_recurso, en_recogida)
+    _dibujar_unidades(
+        pantalla,
+        vista,
+        layout,
+        fuentes["id"],
+        previas,
+        progreso,
+        imagen_recurso,
+        ocultar_bandera=en_recogida,
+    )
 
 
 def _dibujar_obstaculo(pantalla, rect) -> None:
@@ -155,8 +186,16 @@ def _dibujar_bases(pantalla, vista, layout, fuente) -> None:
         pantalla.blit(etiqueta, (rect.left + 5, rect.top + 3))
 
 
-def _dibujar_recurso(pantalla, vista, layout, imagen=None) -> None:
-    """Dibuja el recurso con la bandera; si no hay imagen, un rombo dorado."""
+def _dibujar_recurso(pantalla, vista, layout, imagen=None, en_recogida=False) -> None:
+    """Dibuja el recurso en su celda de origen mientras nadie lo transporta.
+
+    Cuando una unidad lo lleva, la bandera se dibuja sobre esa unidad en
+    `_dibujar_unidades`. Durante el paso de recogida (`en_recogida`) la bandera
+    grande se mantiene en su origen hasta que la unidad llega.
+    """
+    if vista.portador is not None and not en_recogida:
+        return
+
     rect = layout.rect_celda(vista.recurso[0], vista.recurso[1])
 
     if imagen is not None:
@@ -177,21 +216,61 @@ def _dibujar_recurso(pantalla, vista, layout, imagen=None) -> None:
     pygame.draw.polygon(pantalla, COLOR_BORDE_CELDA, puntos, 2)
 
 
-def _dibujar_unidades(pantalla, vista, layout, fuente) -> None:
-    """Dibuja cada unidad como un disco con su identificador."""
+def _dibujar_bandera_pequena(pantalla, centro, radio, imagen=None) -> None:
+    """Dibuja una bandera pequeña en la esquina superior derecha del disco portador."""
+    lado = max(8, int(radio * 1.1))
+    cx = round(centro[0] + radio * 0.75)
+    cy = round(centro[1] - radio * 0.75)
+
+    if imagen is not None:
+        escalada = pygame.transform.smoothscale(imagen, (lado, lado))
+        pantalla.blit(escalada, escalada.get_rect(center=(cx, cy)))
+        return
+
+    mitad = lado // 2
+    puntos = [(cx, cy - mitad), (cx + mitad, cy), (cx, cy + mitad), (cx - mitad, cy)]
+    pygame.draw.polygon(pantalla, COLOR_RECURSO, puntos)
+    pygame.draw.polygon(pantalla, COLOR_BORDE_CELDA, puntos, 1)
+
+
+def _dibujar_unidades(
+    pantalla,
+    vista,
+    layout,
+    fuente,
+    previas=None,
+    progreso=1.0,
+    imagen=None,
+    ocultar_bandera=False,
+) -> None:
+    """Dibuja cada unidad como un disco con su identificador, interpolando el movimiento.
+
+    La unidad portadora lleva además una bandera pequeña que se mueve con ella.
+    """
+    radio = max(6, int(layout.lado * 0.30))
+    animar = bool(previas) and progreso < 1.0
+
     for unidad in vista.unidades:
-        rect = layout.rect_celda(unidad.fila, unidad.columna)
+        fila, columna = float(unidad.fila), float(unidad.columna)
+        if animar and unidad.id in previas:
+            fila_previa, columna_previa = previas[unidad.id]
+            fila = fila_previa + (fila - fila_previa) * progreso
+            columna = columna_previa + (columna - columna_previa) * progreso
+
+        centro = tuple(round(v) for v in layout.centro(fila, columna))
         color = COLOR_BANDO.get(unidad.bando, COLOR_TEXTO)
-        radio = max(6, int(min(rect.width, rect.height) * 0.30))
 
         if unidad.id == vista.portador:
-            pygame.draw.circle(pantalla, COLOR_PORTADOR, rect.center, radio + 4, 3)
+            pygame.draw.circle(pantalla, COLOR_PORTADOR, centro, radio + 4, 3)
 
-        pygame.draw.circle(pantalla, color, rect.center, radio)
-        pygame.draw.circle(pantalla, COLOR_BORDE_CELDA, rect.center, radio, 2)
+        pygame.draw.circle(pantalla, color, centro, radio)
+        pygame.draw.circle(pantalla, COLOR_BORDE_CELDA, centro, radio, 2)
 
         etiqueta = fuente.render(unidad.id, True, COLOR_TEXTO)
-        pantalla.blit(etiqueta, etiqueta.get_rect(center=rect.center))
+        pantalla.blit(etiqueta, etiqueta.get_rect(center=centro))
+
+        if unidad.id == vista.portador and not ocultar_bandera:
+            _dibujar_bandera_pequena(pantalla, centro, radio, imagen)
 
 
 def _formatear_costo(costo) -> str:

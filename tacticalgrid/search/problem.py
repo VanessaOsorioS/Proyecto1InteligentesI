@@ -142,6 +142,56 @@ class ProblemaTablero:
         return tuple(resultado)
 
 
+class ProblemaMultiobjetivo(ProblemaTablero):
+    """Recorrido de una unidad hacia cualquiera de varias celdas meta.
+
+    Hereda sucesores y validaciones de `ProblemaTablero`. La meta es cualquier
+    celda de `objetivos`, útil para "llegar a la base" o "acercarse a un
+    enemigo" sin conocer cuál de las celdas es la más cercana.
+
+    Attributes:
+        objetivos: Conjunto de posiciones meta (no vacío).
+    """
+
+    def __init__(
+        self,
+        tablero: Board,
+        inicio: Position,
+        objetivos,
+        bloqueadas: frozenset[Position] = frozenset(),
+    ):
+        """
+        Purpose:
+            Crear el problema con un conjunto de metas válidas.
+
+        Preconditions:
+            `objetivos` es un iterable no vacío de Position transitables y no
+            bloqueadas; el resto de precondiciones son las de ProblemaTablero.
+
+        Postconditions:
+            Guarda `objetivos` como frozenset. Lanza ValueError si está vacío.
+
+        Complexity:
+            O(K), donde K es el número de objetivos.
+
+        AI usage: Yes
+        AI intervention:
+            Subclase propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        objetivos = frozenset(objetivos)
+        if not objetivos:
+            raise ValueError("Debe haber al menos un objetivo.")
+        primero = min(objetivos, key=lambda p: (p.row, p.column))
+        super().__init__(tablero, inicio, primero, bloqueadas)
+        self.objetivos = objetivos
+
+    def es_objetivo(self, posicion: Position) -> bool:
+        """Devuelve True si la posición pertenece al conjunto de metas."""
+        return posicion in self.objetivos
+
+
 def objetivos_adyacentes(
     tablero: Board,
     objetivo: Position,

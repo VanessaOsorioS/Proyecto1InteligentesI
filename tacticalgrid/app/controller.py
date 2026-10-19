@@ -5,41 +5,92 @@ vista listo para dibujar, reutilizando la clase `Board` del dominio para validar
 la coherencia del tablero.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from tacticalgrid.app.partida import ALGORITMOS_BUSQUEDA, Partida
 from tacticalgrid.domain.board import Board
+from tacticalgrid.domain.state import GameState
 from tacticalgrid.domain.terrain import Terrain
-from tacticalgrid.io.scenario_loader import load_scenario
+from tacticalgrid.io.scenario_loader import cargar_modelo, load_scenario
 
-ALGORITMOS_DISPONIBLES = (
-    "BFS",
-    "DFS",
-    "UCS",
-    "A*",
-    "Beam k=1",
-    "Beam k=2",
-    "Beam k=4",
-    "Beam k=8",
-)
+ALGORITMOS_DISPONIBLES = ALGORITMOS_BUSQUEDA
 
 
 def algoritmos_disponibles() -> tuple[str, ...]:
     """
     Purpose:
-        Exponer los algoritmos de búsqueda que la interfaz puede ofrecer.
+        Exponer los algoritmos que la interfaz puede seleccionar.
 
     Preconditions:
         Ninguna.
 
     Postconditions:
-        Devuelve una tupla inmutable con las etiquetas seleccionables.
-        Es la única fuente del catálogo; la UI no conoce `search/`.
+        Devuelve una tupla inmutable con las etiquetas seleccionables. Incluye
+        búsqueda (BFS, DFS, UCS, A*, Beam) y decisión (Minimax, Alfa-Beta).
 
     Complexity:
         O(1).
 
     """
     return ALGORITMOS_DISPONIBLES
+
+
+def nueva_partida(vista: "ScenarioVista", algoritmo: str) -> Partida:
+    """
+    Purpose:
+        Crear una partida nueva a partir del escenario cargado en la vista.
+
+    Preconditions:
+        `vista` proviene de `cargar_escenario` y `algoritmo` está en el catálogo.
+
+    Postconditions:
+        Devuelve una Partida en su estado inicial. Propaga ValueError si el
+        algoritmo no existe.
+
+    Complexity:
+        O(F * C + U + T) por la reconstrucción del modelo.
+
+    AI usage: Yes
+    AI intervention:
+        Adaptador vista -> partida propuesto con asistencia de IA.
+    Student validation:
+        Pendiente de ejecución y validación del equipo.
+    """
+    modelo = cargar_modelo(vista.ruta)
+    return Partida(modelo.scenario, modelo.estado, algoritmo)
+
+
+def vista_de_estado(vista: "ScenarioVista", estado: GameState) -> "ScenarioVista":
+    """
+    Purpose:
+        Reflejar el estado actual de la partida en el modelo de vista.
+
+    Preconditions:
+        `vista` es la vista base del escenario; `estado` es un GameState del mismo.
+
+    Postconditions:
+        Devuelve una copia de la vista con unidades, turno y portador actuales.
+        No modifica la vista original.
+
+    Complexity:
+        O(U), donde U es el número de unidades.
+
+    AI usage: Yes
+    AI intervention:
+        Proyección del estado a la vista propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    unidades = tuple(
+        UnidadVista(u.id, u.bando, u.posicion.row, u.posicion.column)
+        for u in estado.unidades
+    )
+    return replace(
+        vista,
+        unidades=unidades,
+        turno=estado.turno,
+        portador=estado.portador,
+    )
 
 
 @dataclass(frozen=True)

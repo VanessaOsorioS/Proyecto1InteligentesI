@@ -50,6 +50,12 @@ def construir_boton(rect_panel: pygame.Rect) -> Boton:
     return Boton(rect, "Cargar JSON")
 
 
+def construir_boton_reiniciar(rect_panel: pygame.Rect, y_inicio: int) -> Boton:
+    """Crea el botón de reinicio, debajo del botón de carga y con su mismo ancho."""
+    rect = pygame.Rect(rect_panel.x + 16, y_inicio, rect_panel.width - 32, 44)
+    return Boton(rect, "Reiniciar")
+
+
 def construir_botones_algoritmos(
     rect_panel: pygame.Rect,
     y_inicio: int,
@@ -144,6 +150,8 @@ def dibujar_panel(
     error,
     botones_algoritmos=(),
     algoritmo_seleccionado=None,
+    textos_partida=(),
+    boton_reiniciar=None,
 ) -> None:
     """
     Purpose:
@@ -152,12 +160,13 @@ def dibujar_panel(
     Preconditions:
         `rect_panel` delimita el área; `boton` es un Boton; `error` es str o None.
         `botones_algoritmos` son los botones de algoritmo (habilitados si hay vista).
+        `textos_partida` son líneas con el estado de la partida (puede estar vacío).
 
     Postconditions:
         El panel queda dibujado; no se modifica ninguno de los argumentos.
 
     Complexity:
-        O(T + U + N), T terrenos, U unidades, N algoritmos.
+        O(T + U + N + L), T terrenos, U unidades, N algoritmos, L líneas de partida.
 
     """
     pygame.draw.rect(pantalla, COLOR_PANEL, rect_panel)
@@ -170,7 +179,11 @@ def dibujar_panel(
     )
 
     _dibujar_boton(pantalla, boton, fuentes["texto"])
-    y = boton.rect.bottom + 12
+    ultimo = boton
+    if boton_reiniciar is not None:
+        _dibujar_boton(pantalla, boton_reiniciar, fuentes["texto"])
+        ultimo = boton_reiniciar
+    y = ultimo.rect.bottom + 12
 
     if botones_algoritmos:
         y = _dibujar_texto(
@@ -202,6 +215,8 @@ def dibujar_panel(
     y = _dibujar_hud(
         pantalla, vista, fuentes, rect_panel, y, algoritmo_seleccionado
     )
+    for linea in textos_partida:
+        y = _dibujar_texto(pantalla, linea, fuentes["pequena"], COLOR_TEXTO, rect_panel, y, 4)
     _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y + 10)
 
 

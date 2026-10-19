@@ -64,6 +64,49 @@ def crear_manhattan(objetivo: Position, costo_minimo: float = 1) -> Callable[[Po
 
 
 
+def crear_manhattan_multiple(
+    objetivos,
+    costo_minimo: float = 1,
+) -> Callable[[Position], float]:
+    """
+    Purpose:
+        Construir una heurística Manhattan para varias metas: el mínimo de las
+        distancias a cada objetivo, escalado por el costo mínimo de terreno.
+
+    Preconditions:
+        `objetivos` es un iterable no vacío de Position; `costo_minimo` es un
+        número positivo que no supera el costo de ninguna celda transitable.
+
+    Postconditions:
+        Devuelve h(p) = costo_minimo * min_g(|Δfila| + |Δcolumna|) para g en
+        objetivos. Es admisible y consistente, porque es mínimo de heurísticas
+        admisibles y consistentes.
+
+    Complexity:
+        O(K) por evaluación, con K objetivos.
+
+    AI usage: Yes
+    AI intervention:
+        Generalización de la heurística Manhattan propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    metas = tuple(objetivos)
+    if not metas or any(not isinstance(g, Position) for g in metas):
+        raise ValueError("Los objetivos deben ser un conjunto no vacío de Position.")
+
+    if type(costo_minimo) not in (int, float) or costo_minimo <= 0:
+        raise ValueError("El costo mínimo debe ser un número positivo.")
+
+    def heuristica(posicion: Position) -> float:
+        distancia = min(
+            abs(posicion.row - g.row) + abs(posicion.column - g.column) for g in metas
+        )
+        return costo_minimo * distancia
+
+    return heuristica
+
+
 def crear_distancia_exacta(
     tablero: Board,
     objetivo: Position,
