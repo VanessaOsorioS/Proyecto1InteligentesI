@@ -152,6 +152,7 @@ def dibujar_panel(
     algoritmo_seleccionado=None,
     textos_partida=(),
     boton_reiniciar=None,
+    imagenes_terreno=None,
 ) -> None:
     """
     Purpose:
@@ -161,6 +162,7 @@ def dibujar_panel(
         `rect_panel` delimita el área; `boton` es un Boton; `error` es str o None.
         `botones_algoritmos` son los botones de algoritmo (habilitados si hay vista).
         `textos_partida` son líneas con el estado de la partida (puede estar vacío).
+        `imagenes_terreno` asocia el nombre del terreno con una Surface opcional.
 
     Postconditions:
         El panel queda dibujado; no se modifica ninguno de los argumentos.
@@ -217,7 +219,7 @@ def dibujar_panel(
     )
     for linea in textos_partida:
         y = _dibujar_texto(pantalla, linea, fuentes["pequena"], COLOR_TEXTO, rect_panel, y, 4)
-    _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y + 10)
+    _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y + 10, imagenes_terreno)
 
 
 def _dibujar_boton(pantalla, boton, fuente) -> None:
@@ -245,10 +247,28 @@ def _dibujar_hud(pantalla, vista, fuentes, rect_panel, y, algoritmo=None) -> int
     return y
 
 
-def _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y) -> int:
-    """Dibuja la leyenda de terrenos con su color y costo."""
+def _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y, imagenes_terreno=None) -> int:
+    """
+    Purpose:
+        Dibujar la leyenda de terrenos con su imagen o color y su costo.
+
+    Preconditions:
+        `imagenes_terreno` es un dict nombre -> Surface o None, indexado en
+        minúsculas.
+
+    Postconditions:
+        Devuelve la siguiente Y libre bajo la leyenda.
+
+    Complexity:
+        O(T), T terrenos del escenario.
+
+    AI usage: Yes
+    AI intervention:
+        Miniatura de terreno propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
     y = _dibujar_texto(pantalla, "Leyenda", fuentes["texto"], COLOR_TEXTO, rect_panel, y, 8)
-    ancho_util = rect_panel.width - 32
 
     for nombre, (transitable, costo) in vista.terrenos.items():
         if y + 22 > rect_panel.bottom:
@@ -257,6 +277,16 @@ def _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y) -> int:
         color = COLOR_TERRENO.get(nombre, COLOR_TERRENO_DEFECTO)
         muestra = pygame.Rect(rect_panel.x + 16, y + 2, 18, 18)
         pygame.draw.rect(pantalla, color, muestra, border_radius=4)
+
+        imagen = None
+        if imagenes_terreno:
+            imagen = imagenes_terreno.get(str(nombre).strip().lower())
+        if imagen is not None:
+            pantalla.blit(
+                pygame.transform.smoothscale(imagen, (muestra.width, muestra.height)),
+                muestra.topleft,
+            )
+
         pygame.draw.rect(pantalla, COLOR_BORDE, muestra, 1, border_radius=4)
 
         if transitable:

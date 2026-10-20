@@ -37,6 +37,12 @@ COLOR_BANDO = {"A": (210, 84, 72), "B": (74, 124, 214)}
 MARGEN = 18
 ANCHO_PANEL = 300
 
+_CACHE_ESCALADOS: dict[tuple[int, int, int], tuple[pygame.Surface, pygame.Surface]] = {}
+"""Caché de superficies reescaladas: (id de origen, ancho, alto) -> (origen, escalada)."""
+
+_CACHE_FUENTES: dict[int, pygame.font.Font] = {}
+"""Caché de fuentes para el identificador: tamaño en píxeles -> fuente."""
+
 
 @dataclass(frozen=True)
 class LayoutTablero:
@@ -93,6 +99,8 @@ def dibujar_tablero(
     previas=None,
     progreso=1.0,
     recogida=False,
+    imagenes_terreno=None,
+    imagenes_bando=None,
 ) -> None:
     """
     Purpose:
@@ -103,6 +111,8 @@ def dibujar_tablero(
         `imagen_recurso` es una Surface opcional para el recurso. `previas` es
         un dict id -> (fila, columna) de la posición anterior y `progreso` en
         [0, 1] indica cuánto se ha desplazado cada ficha hacia la actual.
+        `imagenes_terreno` e `imagenes_bando` son dicts opcionales que asocian
+        el nombre del terreno o el bando con una Surface ya recortada.
 
     Postconditions:
         El tablero queda dibujado en `pantalla`; no se modifica `vista`.
@@ -125,10 +135,26 @@ def dibujar_tablero(
             color = COLOR_TERRENO.get(nombre, COLOR_TERRENO_DEFECTO)
             pygame.draw.rect(pantalla, color, rect)
 
+            imagen_terreno = _imagen_de_mapa(imagenes_terreno, nombre)
+            if imagen_terreno is not None:
+                escalada = _escalar_imagen(
+                    imagen_terreno,
+                    rect.width,
+                    rect.height,
+                    conservar_proporcion=False,
+                )
+                pantalla.blit(escalada, rect.topleft)
+
             if not transitable:
                 _dibujar_obstaculo(pantalla, rect)
             elif costo is not None:
-                _dibujar_costo(pantalla, rect, costo, fuentes["costo"])
+                _dibujar_costo(
+                    pantalla,
+                    rect,
+                    costo,
+                    fuentes["costo"],
+                    con_fondo=imagen_terreno is not None,
+                )
 
             pygame.draw.rect(pantalla, COLOR_BORDE_CELDA, rect, 1)
 
@@ -147,6 +173,7 @@ def dibujar_tablero(
         progreso,
         imagen_recurso,
         ocultar_bandera=en_recogida,
+        imagenes_bando=imagenes_bando,
     )
 
 
@@ -169,9 +196,40 @@ def _dibujar_obstaculo(pantalla, rect) -> None:
     )
 
 
-def _dibujar_costo(pantalla, rect, costo, fuente) -> None:
-    """Escribe el costo de ingreso en el centro de la celda."""
-    texto = fuente.render(_formatear_costo(costo), True, COLOR_TEXTO_OBSCURO)
+def _dibujar_costo(pantalla, rect, costo, fuente, con_fondo=False) -> None:
+    """
+    Purpose:
+        Escribir el costo de ingreso en el centro de la celda.
+
+    Preconditions:
+        `rect` es el rectángulo de la celda y `fuente` una pygame.font.Font.
+        `con_fondo` pide un disco oscuro detrás del número para que se lea
+        sobre una imagen de terreno.
+
+    Postconditions:
+        El número queda dibujado en `pantalla`; no se modifica `rect`.
+
+    Complexity:
+        O(1) más el coste de dibujar el texto.
+
+    AI usage: Yes
+    AI intervention:
+        Ajuste de contraste sobre imágenes propuesto con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
+    if con_fondo:
+        fondo = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.circle(
+            fondo,
+            (20, 22, 26, 170),
+            (rect.width // 2, rect.height // 2),
+            max(7, int(rect.width * 0.24)),
+        )
+        pantalla.blit(fondo, rect.topleft)
+
+    color = COLOR_TEXTO if con_fondo else COLOR_TEXTO_OBSCURO
+    texto = fuente.render(_formatear_costo(costo), True, color)
     pantalla.blit(texto, texto.get_rect(center=rect.center))
 
 
@@ -233,6 +291,41 @@ def _dibujar_bandera_pequena(pantalla, centro, radio, imagen=None) -> None:
     pygame.draw.polygon(pantalla, COLOR_BORDE_CELDA, puntos, 1)
 
 
+def _dibujar_bandera_portador(pantalla, centro, lado, imagen=None) -> None:
+    """
+    Purpose:
+        Dibujar la bandera del portador centrada en un punto, con tamaño fijo.
+
+    Preconditions:
+        `centro` es una tupla (x, y) en píxeles; `lado` es el tamaño deseado.
+        `imagen` es una Surface opcional para la bandera.
+
+    Postconditions:
+        La bandera queda dibujada en `pantalla`.
+
+    Complexity:
+        O(1) más el coste de dibujar la imagen.
+
+    AI usage: Yes
+    AI intervention:
+        Rutina de dibujo propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
+    lado = max(8, int(lado))
+
+    if imagen is not None:
+        escalada = _escalar_imagen(imagen, lado, lado)
+        pantalla.blit(escalada, escalada.get_rect(center=centro))
+        return
+
+    cx, cy = centro
+    mitad = lado // 2
+    puntos = [(cx, cy - mitad), (cx + mitad, cy), (cx, cy + mitad), (cx - mitad, cy)]
+    pygame.draw.polygon(pantalla, COLOR_RECURSO, puntos)
+    pygame.draw.polygon(pantalla, COLOR_BORDE_CELDA, puntos, 1)
+
+
 def _dibujar_unidades(
     pantalla,
     vista,
@@ -242,13 +335,34 @@ def _dibujar_unidades(
     progreso=1.0,
     imagen=None,
     ocultar_bandera=False,
+    imagenes_bando=None,
 ) -> None:
-    """Dibuja cada unidad como un disco con su identificador, interpolando el movimiento.
+    """
+    Purpose:
+        Dibujar cada unidad con su identificador, interpolando el movimiento.
 
-    La unidad portadora lleva además una bandera pequeña que se mueve con ella.
+    Preconditions:
+        `vista` es un ScenarioVista. `previas` es un dict id -> (fila, columna)
+        y `progreso` está en [0, 1]. `imagen` es la bandera del recurso y
+        `imagenes_bando` asocia cada bando con un sprite ya recortado.
+
+    Postconditions:
+        Cada unidad se dibuja con su sprite si el bando tiene imagen o con un
+        disco de color en caso contrario. La unidad portadora lleva además una
+        bandera pequeña que se mueve con ella.
+
+    Complexity:
+        O(U), U unidades.
+
+    AI usage: Yes
+    AI intervention:
+        Sustitución de discos por sprites propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
     """
     radio = max(6, int(layout.lado * 0.30))
     animar = bool(previas) and progreso < 1.0
+    imagenes_bando = imagenes_bando or {}
 
     for unidad in vista.unidades:
         fila, columna = float(unidad.fila), float(unidad.columna)
@@ -259,18 +373,170 @@ def _dibujar_unidades(
 
         centro = tuple(round(v) for v in layout.centro(fila, columna))
         color = COLOR_BANDO.get(unidad.bando, COLOR_TEXTO)
+        sprite = imagenes_bando.get(unidad.bando)
+
+        if sprite is None:
+            if unidad.id == vista.portador:
+                pygame.draw.circle(pantalla, COLOR_PORTADOR, centro, radio + 4, 3)
+
+            pygame.draw.circle(pantalla, color, centro, radio)
+            pygame.draw.circle(pantalla, COLOR_BORDE_CELDA, centro, radio, 2)
+
+            etiqueta = fuente.render(unidad.id, True, COLOR_TEXTO)
+            pantalla.blit(etiqueta, etiqueta.get_rect(center=centro))
+
+            if unidad.id == vista.portador and not ocultar_bandera:
+                _dibujar_bandera_pequena(pantalla, centro, radio, imagen)
+            continue
+
+        lado_sprite = layout.lado * 0.92
+        escalado = _escalar_imagen(sprite, lado_sprite, lado_sprite)
+        base_y = round(centro[1] + layout.lado * 0.44)
+        destino = escalado.get_rect(midbottom=(centro[0], base_y))
 
         if unidad.id == vista.portador:
-            pygame.draw.circle(pantalla, COLOR_PORTADOR, centro, radio + 4, 3)
+            halo = pygame.Rect(
+                0,
+                0,
+                max(10, int(layout.lado * 0.78)),
+                max(6, int(layout.lado * 0.22)),
+            )
+            halo.center = (centro[0], round(base_y - layout.lado * 0.06))
+            pygame.draw.ellipse(
+                pantalla,
+                COLOR_PORTADOR,
+                halo,
+                max(2, int(layout.lado * 0.02)),
+            )
 
-        pygame.draw.circle(pantalla, color, centro, radio)
-        pygame.draw.circle(pantalla, COLOR_BORDE_CELDA, centro, radio, 2)
+        pantalla.blit(escalado, destino)
 
-        etiqueta = fuente.render(unidad.id, True, COLOR_TEXTO)
-        pantalla.blit(etiqueta, etiqueta.get_rect(center=centro))
+        fuente_id = _fuente_id(layout.lado)
+        etiqueta = fuente_id.render(unidad.id, True, COLOR_TEXTO)
+        sombra = fuente_id.render(unidad.id, True, COLOR_BORDE_CELDA)
+        desfase = max(1, int(layout.lado * 0.012))
+        centro_etiqueta = (
+            destino.centerx,
+            destino.centery + int(layout.lado * 0.14),
+        )
+        pantalla.blit(
+            sombra,
+            sombra.get_rect(
+                center=(centro_etiqueta[0] + desfase, centro_etiqueta[1] + desfase)
+            ),
+        )
+        pantalla.blit(etiqueta, etiqueta.get_rect(center=centro_etiqueta))
 
         if unidad.id == vista.portador and not ocultar_bandera:
-            _dibujar_bandera_pequena(pantalla, centro, radio, imagen)
+            _dibujar_bandera_portador(
+                pantalla,
+                (
+                    destino.right + round(layout.lado * 0.05),
+                    destino.top + round(layout.lado * 0.20),
+                ),
+                max(8, int(layout.lado * 0.30)),
+                imagen,
+            )
+
+
+def _fuente_id(lado):
+    """
+    Purpose:
+        Obtener una fuente para el identificador proporcional a la celda.
+
+    Preconditions:
+        `lado` es el tamaño de la celda en píxeles.
+
+    Postconditions:
+        Devuelve una pygame.font.Font en negrita; reutiliza las ya creadas.
+
+    Complexity:
+        O(1) esperado tras la primera llamada por tamaño.
+
+    AI usage: Yes
+    AI intervention:
+        Escalado del identificador propuesto con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
+    tamano = max(11, int(lado * 0.13))
+    fuente = _CACHE_FUENTES.get(tamano)
+    if fuente is None:
+        if len(_CACHE_FUENTES) > 24:
+            _CACHE_FUENTES.clear()
+        fuente = pygame.font.SysFont("consolas", tamano, bold=True)
+        _CACHE_FUENTES[tamano] = fuente
+    return fuente
+
+
+def _imagen_de_mapa(imagenes, nombre):
+    """
+    Purpose:
+        Buscar la imagen asociada a un nombre de terreno sin distinguir mayúsculas.
+
+    Preconditions:
+        `imagenes` es un dict nombre -> Surface o None; `nombre` es el nombre
+        del terreno tal como aparece en el escenario.
+
+    Postconditions:
+        Devuelve la Surface correspondiente o None si no existe.
+
+    Complexity:
+        O(1) esperado.
+
+    AI usage: Yes
+    AI intervention:
+        Normalización del nombre propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
+    if not imagenes:
+        return None
+    return imagenes.get(str(nombre).strip().lower())
+
+
+def _escalar_imagen(imagen, ancho, alto, conservar_proporcion=True):
+    """
+    Purpose:
+        Escalar una imagen y reutilizar el resultado si ya se calculó.
+
+    Preconditions:
+        `imagen` es una Surface; `ancho` y `alto` son positivos. Si
+        `conservar_proporcion` es verdadero, la imagen cabe dentro de la caja.
+
+    Postconditions:
+        Devuelve una Surface escalada; no modifica `imagen`.
+
+    Complexity:
+        O(1) en aciertos de caché y O(A * B) al escalar, A y B destino.
+
+    AI usage: Yes
+    AI intervention:
+        Caché por tamaño propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de pruebas y revisión por el equipo.
+    """
+    ancho = max(1, int(ancho))
+    alto = max(1, int(alto))
+
+    if conservar_proporcion:
+        proporcion = imagen.get_width() / max(1, imagen.get_height())
+        if ancho / alto > proporcion:
+            ancho = max(1, round(alto * proporcion))
+        else:
+            alto = max(1, round(ancho / proporcion))
+
+    clave = (id(imagen), ancho, alto)
+    entrada = _CACHE_ESCALADOS.get(clave)
+    if entrada is not None and entrada[0] is imagen:
+        return entrada[1]
+
+    if len(_CACHE_ESCALADOS) > 128:
+        _CACHE_ESCALADOS.clear()
+
+    escalada = pygame.transform.smoothscale(imagen, (ancho, alto))
+    _CACHE_ESCALADOS[clave] = (imagen, escalada)
+    return escalada
 
 
 def _formatear_costo(costo) -> str:

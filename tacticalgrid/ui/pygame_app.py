@@ -30,14 +30,18 @@ class PygameApp:
         self.pantalla = pygame.display.set_mode(tamano, pygame.RESIZABLE)
         self.reloj = pygame.time.Clock()
 
-        self.imagen_recurso = None
-        ruta_bandera = os.path.join(
-            os.path.dirname(__file__), "assets", "bandera_recurso.png"
-        )
-        try:
-            self.imagen_recurso = pygame.image.load(ruta_bandera).convert_alpha()
-        except (pygame.error, FileNotFoundError):
-            self.imagen_recurso = None
+        self.imagen_recurso = self._cargar_imagen("bandera_recurso.png")
+        self.imagenes_terreno = {}
+        self.imagenes_bando = {}
+
+        imagen_pantano = self._cargar_imagen("Pantano.png")
+        if imagen_pantano is not None:
+            self.imagenes_terreno["pantano"] = imagen_pantano
+
+        for bando, archivo in (("A", "PeonRojo.png"), ("B", "PeonVerde.png")):
+            imagen_peon = self._cargar_imagen(archivo, recortar=True)
+            if imagen_peon is not None:
+                self.imagenes_bando[bando] = imagen_peon
 
         self.fuentes = {
             "titulo": pygame.font.SysFont("consolas", 22, bold=True),
@@ -59,6 +63,40 @@ class PygameApp:
 
         if ruta_inicial and os.path.exists(ruta_inicial):
             self.cargar(ruta_inicial)
+
+    def _cargar_imagen(self, archivo: str, recortar: bool = False):
+        """
+        Purpose:
+            Cargar una imagen de `ui/assets` con canal alfa.
+
+        Preconditions:
+            `archivo` es el nombre del archivo dentro de `ui/assets`; la
+            pantalla de pygame ya está inicializada.
+
+        Postconditions:
+            Devuelve la Surface cargada o None si el archivo no existe o no es
+            una imagen válida. Si `recortar`, elimina el margen transparente.
+
+        Complexity:
+            O(P), P píxeles de la imagen.
+
+        AI usage: Yes
+        AI intervention:
+            Carga tolerante a errores y recorte propuestos con asistencia de IA.
+        Student validation:
+            Pendiente de pruebas y revisión por el equipo.
+        """
+        ruta = os.path.join(os.path.dirname(__file__), "assets", archivo)
+        try:
+            imagen = pygame.image.load(ruta).convert_alpha()
+        except (pygame.error, FileNotFoundError):
+            return None
+
+        if recortar:
+            contenido = imagen.get_bounding_rect()
+            if contenido.width > 0 and contenido.height > 0:
+                imagen = imagen.subsurface(contenido).copy()
+        return imagen
 
     def cargar(self, ruta: str) -> None:
         """
@@ -228,6 +266,8 @@ class PygameApp:
                 previas,
                 progreso,
                 recogida,
+                self.imagenes_terreno,
+                self.imagenes_bando,
             )
 
         textos_partida = self.partida.resumen() if self.partida is not None else ()
@@ -242,5 +282,6 @@ class PygameApp:
             self.algoritmo_seleccionado,
             textos_partida,
             self.boton_reiniciar,
+            self.imagenes_terreno,
         )
         pygame.display.flip()
