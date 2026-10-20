@@ -238,6 +238,7 @@ class PygameApp:
             self.algoritmos,
         )
 
+        vista_mostrada = self.vista
         if self.vista is not None:
             layout = renderer.calcular_layout(
                 ancho - rect_panel.width,
@@ -245,11 +246,8 @@ class PygameApp:
                 self.vista.filas,
                 self.vista.columnas,
             )
-            vista_mostrada = (
-                vista_de_estado(self.vista, self.partida.estado)
-                if self.partida is not None
-                else self.vista
-            )
+            if self.partida is not None:
+                vista_mostrada = vista_de_estado(self.vista, self.partida.estado)
             previas, progreso = self._progreso_animacion()
             anterior = self.partida.anterior if self.partida is not None else None
             recogida = (
@@ -273,7 +271,7 @@ class PygameApp:
         textos_partida = self.partida.resumen() if self.partida is not None else ()
         panels.dibujar_panel(
             self.pantalla,
-            self.vista,
+            vista_mostrada,
             rect_panel,
             self.fuentes,
             self.boton,
