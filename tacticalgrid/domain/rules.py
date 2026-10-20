@@ -6,7 +6,7 @@ victorias y empates. No conoce entrada/salida ni interfaz gráfica.
 
 Reglas cubiertas:
     - Movimiento ortogonal de una celda.
-    - Una unidad por celda (bloqueo por ocupación).
+    - Una unidad por celda, salvo aliados en la base propia del bando.
     - Turnos alternados.
     - Recolección automática del recurso.
     - Transferencia entre aliados adyacentes.
@@ -16,6 +16,7 @@ Reglas cubiertas:
 """
 
 from dataclasses import dataclass
+from typing import Mapping
 
 from tacticalgrid.domain.actions import (
     Accion,
@@ -118,6 +119,82 @@ def celdas_ocupadas(estado: GameState) -> frozenset[tuple[int, int]]:
     )
 
 
+def celdas_bloqueadas_para(
+    estado: GameState,
+    scenario: Scenario,
+    unidad: Unit,
+    unidades: tuple[Unit, ...] | None = None,
+) -> frozenset[Position]:
+    """
+    Purpose:
+        Obtener las posiciones que bloquean el paso de una unidad concreta.
+
+    Preconditions:
+        `estado` es un GameState válido; `scenario` describe las bases;
+        `unidad` pertenece al estado. `unidades` permite usar una tupla
+        simulada; si es None se usan las del estado.
+
+    Postconditions:
+        Devuelve las posiciones ocupadas por otras unidades, excepto las de
+        aliados que estén en la base propia de `unidad`. Si la base propia
+        contiene un enemigo, esa posición sí queda bloqueada.
+
+    Complexity:
+        O(U), donde U es el número de unidades.
+
+    AI usage: No
+    AI intervention:
+        Ninguna.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    base = scenario.bases.get(unidad.bando)
+    bloqueadas = set()
+    for otra in estado.unidades if unidades is None else unidades:
+        if otra.id == unidad.id:
+            continue
+        if (
+            base is not None
+            and otra.bando == unidad.bando
+            and otra.posicion == base
+        ):
+            continue
+        bloqueadas.add(otra.posicion)
+    return frozenset(bloqueadas)
+
+
+def puede_ocupar_celda(
+    estado: GameState, scenario: Scenario, unidad: Unit, destino: Position
+) -> bool:
+    """
+    Purpose:
+        Indicar si una unidad puede moverse a una celda según la ocupación.
+
+    Preconditions:
+        `estado` es un GameState válido; `scenario` describe el tablero y las
+        bases; `unidad` pertenece al estado; `destino` es una Position.
+
+    Postconditions:
+        Devuelve True si `destino` está dentro del tablero, es transitable y no
+        está bloqueada para `unidad`. La base propia puede estar ocupada por
+        aliados; cualquier otra celda ocupada bloquea.
+
+    Complexity:
+        O(U), donde U es el número de unidades.
+
+    AI usage: No
+    AI intervention:
+        Ninguna.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    if not scenario.tablero.is_inside(destino):
+        return False
+    if not scenario.tablero.is_walkable(destino):
+        return False
+    return destino not in celdas_bloqueadas_para(estado, scenario, unidad)
+
+
 def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...]:
     """
     Purpose:
@@ -128,9 +205,11 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
 
     Postconditions:
         Devuelve una tupla de acciones legales (Mover, Transferir, Interceptar).
-        `Interceptar` no aparece mientras `turnos_robo_bloqueado` sea mayor que
-        cero. `Pasar` solo aparece cuando el bando no tiene ninguna otra acción
-        legal disponible. Si la partida ya terminó, devuelve una tupla vacía.
+        `Mover` permite entrar a la base propia aunque ya tenga aliados; el
+        resto de celdas ocupadas bloquea. `Interceptar` no aparece mientras
+        `turnos_robo_bloqueado` sea mayor que cero. `Pasar` solo aparece cuando
+        el bando no tiene ninguna otra acción legal disponible. Si la partida
+        ya terminó, devuelve una tupla vacía.
 
     Complexity:
         O(U^2), donde U es el número de unidades.
@@ -139,20 +218,15 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
     if resultado_partida(estado, scenario) is not None:
         return ()
 
-    tablero = scenario.tablero
-    ocupadas = celdas_ocupadas(estado)
     portador = estado.unidad(estado.portador) if estado.portador is not None else None
 
     acciones = []
 
     for unidad in estado.unidades_de(estado.turno):
-        # Movimiento ortogonal de una celda (bloqueo por ocupación).
+        # Movimiento ortogonal de una celda. La base propia admite aliados;
+        # el resto de celdas ocupadas bloquea.
         for vecino in vecinos_ortogonales(unidad.posicion):
-            if not tablero.is_inside(vecino):
-                continue
-            if not tablero.is_walkable(vecino):
-                continue
-            if (vecino.row, vecino.column) in ocupadas:
+            if not puede_ocupar_celda(estado, scenario, unidad, vecino):
                 continue
             acciones.append(Mover(unidad.id, vecino))
 
@@ -191,6 +265,7 @@ def _avanzar_turno(
     portador: str | None,
     pases_consecutivos: int,
     turnos_robo_bloqueado: int,
+    bases: Mapping[str, Position],
 ) -> GameState:
     """Construye el estado siguiente alternando el turno y sumando el turno."""
     return GameState(
@@ -200,6 +275,7 @@ def _avanzar_turno(
         numero_turno=estado.numero_turno + 1,
         pases_consecutivos=pases_consecutivos,
         turnos_robo_bloqueado=turnos_robo_bloqueado,
+        bases=bases,
     )
 
 
@@ -244,13 +320,18 @@ def aplicar_accion(
             portador = accion.unidad_id
 
         return _avanzar_turno(
-            estado, unidades, portador, 0, bloqueo_restante
+            estado, unidades, portador, 0, bloqueo_restante, scenario.bases
         )
 
     if isinstance(accion, Transferir):
         # Transferencia entre aliados: cambia el portador sin mover unidades.
         return _avanzar_turno(
-            estado, estado.unidades, accion.destino_id, 0, bloqueo_restante
+            estado,
+            estado.unidades,
+            accion.destino_id,
+            0,
+            bloqueo_restante,
+            scenario.bases,
         )
 
     if isinstance(accion, Interceptar):
@@ -262,6 +343,7 @@ def aplicar_accion(
             accion.unidad_id,
             0,
             TURNOS_ENTRE_ROBOS,
+            scenario.bases,
         )
 
     if isinstance(accion, Pasar):
@@ -271,6 +353,7 @@ def aplicar_accion(
             estado.portador,
             estado.pases_consecutivos + 1,
             bloqueo_restante,
+            scenario.bases,
         )
 
     raise AccionInvalida(f"Tipo de acción desconocido: {accion!r}")

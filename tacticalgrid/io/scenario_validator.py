@@ -216,7 +216,27 @@ def validate_positions(data: dict) -> None:
 
 
 def validate_units(data: dict) -> None:
-    """Comprueba identificadores, bandos y posiciones."""
+    """
+    Purpose:
+        Comprobar identificadores, bandos y posiciones de las unidades.
+
+    Preconditions:
+        `data` contiene las claves `bases` y `unidades` ya validadas.
+
+    Postconditions:
+        No devuelve nada si todo es válido. Se permite compartir celda solo
+        en la base propia y entre unidades del mismo bando. Lanza
+        ScenarioValidationError en caso contrario.
+
+    Complexity:
+        O(U), donde U es el número de unidades.
+
+    AI usage: No
+    AI intervention:
+        Ninguna.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
 
     unidades = data["unidades"]
 
@@ -225,8 +245,16 @@ def validate_units(data: dict) -> None:
             "'unidades' debe ser una lista."
         )
 
+    bases = {
+        bando: (
+            data["bases"][bando]["fila"],
+            data["bases"][bando]["columna"],
+        )
+        for bando in ("A", "B")
+    }
     identificadores = set()
     cantidad = {"A": 0, "B": 0}
+    posiciones: dict[tuple[int, int], str] = {}
 
     for indice, unidad in enumerate(unidades):
         if not isinstance(unidad, dict):
@@ -267,6 +295,17 @@ def validate_units(data: dict) -> None:
             data,
             f"Unidad {identificador}",
         )
+
+        clave = (unidad.get("fila"), unidad.get("columna"))
+        bando_previo = posiciones.get(clave)
+        if bando_previo is not None:
+            if bando_previo != bando or bases[bando] != clave:
+                raise ScenarioValidationError(
+                    "Dos unidades solo pueden compartir la base propia "
+                    f"del mismo bando; posicion duplicada: {clave}."
+                )
+        else:
+            posiciones[clave] = bando
 
     # El ejemplo 4x4 del documento tiene dos unidades por bando.
     # Para los escenarios completos de desarrollo se deben usar

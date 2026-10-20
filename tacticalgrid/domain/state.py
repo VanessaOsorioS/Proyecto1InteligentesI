@@ -26,6 +26,8 @@ class GameState:
         pases_consecutivos: Pases consecutivos registrados (empieza en 0).
         turnos_robo_bloqueado: Turnos que faltan para permitir otra
             intercepción del recurso (0 significa que ya está permitida).
+        bases: Mapeo bando -> Position de su base. Lo usa la validación para
+            permitir varias unidades solo en la base propia del mismo bando.
         contadores: Conteo derivado de unidades por bando (calculado).
     """
 
@@ -35,6 +37,7 @@ class GameState:
     numero_turno: int = 1
     pases_consecutivos: int = 0
     turnos_robo_bloqueado: int = 0
+    bases: Mapping[str, Position] = field(default_factory=dict)
     contadores: Mapping[str, int] = field(init=False, default_factory=dict)
 
     def __post_init__(self):
@@ -44,11 +47,14 @@ class GameState:
 
         Preconditions:
             Las unidades, el turno y las posiciones provienen de un escenario
-            ya validado y de la configuración estática (`Scenario`).
+            ya validado y de la configuración estática (`Scenario`). `bases`
+            asocia cada bando con la Position de su base.
 
         Postconditions:
-            Si es válido, guarda `unidades` como tupla y `contadores` como mapeo
-            inmutable; si no, lanza ValueError.
+            Si es válido, guarda `unidades` como tupla, `bases` y `contadores`
+            como mapeos inmutables; si no, lanza ValueError. Se permite más de
+            una unidad por celda solo en la base propia y con unidades del
+            mismo bando.
 
         Complexity:
             O(U), donde U es el número de unidades.
@@ -65,16 +71,35 @@ class GameState:
         if self.turno not in ("A", "B"):
             raise ValueError("El turno debe ser 'A' o 'B'.")
 
-        # Regla: una unidad por celda (sin posiciones duplicadas).
-        ocupadas = set()
+        if not isinstance(self.bases, Mapping):
+            raise ValueError("Las bases deben ser un mapeo bando -> Position.")
+
+        bases = {}
+        for bando, posicion in self.bases.items():
+            if bando not in ("A", "B"):
+                raise ValueError("Las bases solo admiten los bandos 'A' y 'B'.")
+            if not isinstance(posicion, Position):
+                raise ValueError("Cada base debe ser una Position.")
+            bases[bando] = posicion
+
+        # Regla: una unidad por celda, salvo aliados en su propia base.
+        vistas: dict[tuple[int, int], Unit] = {}
         for unidad in unidades:
             clave = (unidad.posicion.row, unidad.posicion.column)
-            if clave in ocupadas:
-                raise ValueError(
-                    "Dos unidades no pueden ocupar la misma celda: "
-                    f"({unidad.posicion.row}, {unidad.posicion.column})."
-                )
-            ocupadas.add(clave)
+            if clave in vistas:
+                primera = vistas[clave]
+                base = bases.get(unidad.bando)
+                if (
+                    primera.bando != unidad.bando
+                    or base is None
+                    or (base.row, base.column) != clave
+                ):
+                    raise ValueError(
+                        "Dos unidades solo pueden compartir la base propia "
+                        f"del mismo bando; posicion duplicada: {clave}."
+                    )
+            else:
+                vistas[clave] = unidad
 
         # Regla: el portador debe corresponder a una unidad existente.
         if self.portador is not None:
@@ -104,6 +129,7 @@ class GameState:
             contadores[unidad.bando] += 1
 
         object.__setattr__(self, "unidades", unidades)
+        object.__setattr__(self, "bases", MappingProxyType(bases))
         object.__setattr__(self, "contadores", MappingProxyType(contadores))
 
     def unidades_de(self, bando: str) -> tuple[Unit, ...]:
@@ -222,8 +248,9 @@ class GameState:
             `portador` es None o el identificador de una unidad existente.
 
         Postconditions:
-            Devuelve un GameState con la misma tupla de unidades, posiciones y
-            contadores, cambiando solo el portador (regla de intercepción).
+            Devuelve un GameState con la misma tupla de unidades, posiciones,
+            bases y contadores, cambiando solo el portador (regla de
+            intercepción).
 
         Complexity:
             O(U) por la validación del nuevo estado.
@@ -236,4 +263,5 @@ class GameState:
             numero_turno=self.numero_turno,
             pases_consecutivos=self.pases_consecutivos,
             turnos_robo_bloqueado=self.turnos_robo_bloqueado,
+            bases=self.bases,
         )

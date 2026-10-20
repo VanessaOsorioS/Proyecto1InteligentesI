@@ -6,9 +6,12 @@ Cada turno, el bando en turno elige una acción según el algoritmo seleccionado
 - BFS, DFS, UCS, A* y Beam: búsqueda de ruta para una unidad propia hacia su
   objetivo (base si es portador, recurso si nadie lo lleva, o el portador
   enemigo si lo tiene). Si hay una intercepción disponible se usa directamente.
-  Si el primer paso devuelve a la unidad a la celda de la que viene, se compara
-  el costo exacto restante de las celdas legales (incluida la previa) y se
-  prefiere no retroceder para evitar ciclos de dos posiciones.
+  Si el portador propio está bloqueado, se evalúa transferir el recurso a un
+  aliado adyacente con una ruta claramente mejor. La base propia admite varios
+  aliados, así que no se descarta como meta cuando ya hay unidades del mismo
+  bando. Si el primer paso devuelve a la unidad a la celda de la que viene, se
+  replantea la ruta con el mismo algoritmo seleccionado, bloqueando esa celda,
+  para evitar ciclos de dos posiciones sin mezclar algoritmos.
 
 No conoce pygame: la UI sólo consume `avanzar`, `posiciones_previas` y `resumen`.
 """
@@ -23,6 +26,7 @@ from tacticalgrid.domain.rules import (
     Resultado,
     acciones_legales,
     aplicar_accion,
+    celdas_bloqueadas_para,
     resultado_partida,
 )
 from tacticalgrid.domain.scenario import Scenario
@@ -261,23 +265,51 @@ class Partida:
         return self._decidir_busqueda(estado)
 
     def _decidir_busqueda(self, estado: GameState) -> tuple[Accion, str]:
-        """Elige la unidad propia con la ruta de menor costo hacia su objetivo."""
+        """
+        Purpose:
+            Elegir la acción del bando en turno usando solo el algoritmo de
+            búsqueda seleccionado.
+
+        Preconditions:
+            `estado` es válido y la partida sigue activa.
+
+        Postconditions:
+            Devuelve una intercepción directa, una transferencia beneficiosa o
+            un movimiento. Si ninguna unidad tiene ruta, intenta despejar la
+            ruta del portador y, en último caso, una acción legal de respaldo.
+
+        Complexity:
+            O(U * S + A * S + M * S), donde U es el número de unidades propias,
+            A el de aliados adyacentes, M el de movimientos legales y S el costo
+            del algoritmo de búsqueda seleccionado.
+
+        AI usage: Yes
+        AI intervention:
+            Selección de acciones y transferencia propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
         legales = acciones_legales(estado, self.scenario)
 
         for accion in legales:
             if isinstance(accion, Interceptar):
                 return accion, "intercepción directa (sin búsqueda)"
 
+        transferencia = self._transferencia_conveniente(estado, legales)
+        if transferencia is not None:
+            return transferencia
+
         mejor: tuple[
             ResultadoBusqueda, Unit, tuple[Position, ...], frozenset[Position]
         ] | None = None
         for unidad in estado.unidades_de(estado.turno):
-            bloqueadas = frozenset(
-                otra.posicion for otra in estado.unidades if otra.id != unidad.id
-            )
-            # Una meta ocupada por otra unidad no es alcanzable: se descarta.
+            bloqueadas = celdas_bloqueadas_para(estado, self.scenario, unidad)
+            # Una meta bloqueada no es alcanzable; los aliados en la base
+            # propia no bloquean.
             objetivos = tuple(
-                meta for meta in self._objetivos(estado, unidad) if meta not in bloqueadas
+                meta
+                for meta in self._objetivos(estado, unidad)
+                if meta not in bloqueadas
             )
             if not objetivos:
                 continue
@@ -295,13 +327,23 @@ class Partida:
                 mejor = (resultado, unidad, objetivos, bloqueadas)
 
         if mejor is None:
-            # Sin ruta disponible para ninguna unidad: primera acción legal.
+            despeje = self._despejar_ruta_portador(estado, legales)
+            if despeje is not None:
+                return despeje
+            alternativa = self._movimiento_sin_retroceso(legales)
+            if alternativa is not None:
+                return alternativa, "sin ruta: movimiento alternativo"
             return legales[0], "sin ruta: acción por defecto"
 
         resultado, unidad, objetivos, bloqueadas = mejor
-        destino = self._paso_sin_retroceso(
-            estado, unidad, resultado.camino[1], objetivos, bloqueadas
-        )
+        destino = resultado.camino[1]
+        anterior = self._posicion_previa.get(unidad.id)
+        if anterior is not None and destino == anterior and anterior not in objetivos:
+            alternativa = self._ruta_sin_retroceso(unidad, objetivos, bloqueadas)
+            if alternativa is not None:
+                resultado = alternativa
+                destino = alternativa.camino[1]
+
         m = resultado.metricas
         texto = (
             f"{unidad.id}: costo {resultado.costo:g}, gen {m.generados}, "
@@ -309,35 +351,148 @@ class Partida:
         )
         return Mover(unidad.id, destino), texto
 
-    def _paso_sin_retroceso(
-        self,
-        estado: GameState,
-        unidad: Unit,
-        destino: Position,
-        objetivos: tuple[Position, ...],
-        bloqueadas: frozenset[Position],
-    ) -> Position:
+    def _transferencia_conveniente(
+        self, estado: GameState, legales: tuple[Accion, ...]
+    ) -> tuple[Transferir, str] | None:
         """
         Purpose:
-            Evitar que una unidad repita en su siguiente movimiento la celda
-            desde la que acaba de llegar, cuando el camino calculado la devuelve
-            a ella.
+            Decidir si el portador debe entregar el recurso a un aliado adyacente
+            con una ruta claramente mejor hacia la base.
 
         Preconditions:
-            `estado` es válido; `unidad` pertenece al bando en turno; `destino`
-            es una celda legal del camino calculado; `objetivos` no está vacío;
+            `estado` es válido; `legales` son las acciones del bando en turno.
+
+        Postconditions:
+            Devuelve `(Transferir, texto)` si conviene transferir; `None` en caso
+            contrario. La comparación usa turnos: ruta del aliado + 1 turno de
+            transferencia debe ser estrictamente menor que la ruta del portador.
+            Si el portador no tiene ruta y el aliado sí, se transfiere.
+
+        Complexity:
+            O((A + 1) * S), donde A es el número de aliados adyacentes y S el
+            costo del algoritmo de búsqueda seleccionado.
+
+        AI usage: Yes
+        AI intervention:
+            Criterio de transferencia por turnos propuesto con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        if estado.portador is None:
+            return None
+
+        portador = estado.unidad(estado.portador)
+        if portador is None or portador.bando != estado.turno:
+            return None
+
+        base = self.scenario.bases[portador.bando]
+        longitud_portador, _ = self._longitud_hasta_base(estado, portador, base)
+        mejor: tuple[float, str, Transferir, float] | None = None
+
+        for accion in legales:
+            if not isinstance(accion, Transferir):
+                continue
+            if accion.origen_id != portador.id:
+                continue
+
+            aliado = estado.unidad(accion.destino_id)
+            if aliado is None:
+                continue
+
+            longitud_aliado, _ = self._longitud_hasta_base(estado, aliado, base)
+            if aliado.posicion == base:
+                return accion, f"transferencia a {aliado.id}: llega a la base"
+            if longitud_aliado == float("inf"):
+                continue
+
+            efectivo = longitud_aliado + 1.0
+            if efectivo >= longitud_portador:
+                continue
+            if mejor is None or (efectivo, aliado.id) < (mejor[0], mejor[1]):
+                mejor = (efectivo, aliado.id, accion, longitud_aliado)
+
+        if mejor is None:
+            return None
+
+        _, _, accion, longitud_aliado = mejor
+        if longitud_portador == float("inf"):
+            texto = (
+                f"transferencia a {accion.destino_id}: "
+                f"{longitud_aliado:g} pasos; portador sin ruta"
+            )
+        else:
+            texto = (
+                f"transferencia a {accion.destino_id}: "
+                f"{longitud_aliado:g} pasos + 1 turno < "
+                f"{longitud_portador:g} del portador"
+            )
+        return accion, texto
+
+    def _longitud_hasta_base(
+        self, estado: GameState, unidad: Unit, base: Position
+    ) -> tuple[float, ResultadoBusqueda | None]:
+        """
+        Purpose:
+            Calcular la longitud de la ruta de una unidad hasta su base con el
+            algoritmo de búsqueda seleccionado.
+
+        Preconditions:
+            `estado` es válido; `unidad` pertenece al estado; `base` es la base
+            de su bando.
+
+        Postconditions:
+            Devuelve `(0, None)` si la unidad ya está en la base,
+            `(inf, None)` si la base está bloqueada (por ejemplo, por un
+            enemigo), o la longitud de la ruta y el resultado de búsqueda. Los
+            aliados en la base propia no bloquean. Si no hay ruta, la longitud
+            es infinita.
+
+        Complexity:
+            O(S), donde S es el costo del algoritmo de búsqueda seleccionado.
+
+        AI usage: Yes
+        AI intervention:
+            Medición de rutas para transferencias propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        if unidad.posicion == base:
+            return 0.0, None
+
+        bloqueadas = celdas_bloqueadas_para(estado, self.scenario, unidad)
+        if base in bloqueadas:
+            return float("inf"), None
+
+        problema = ProblemaMultiobjetivo(
+            self.scenario.tablero, unidad.posicion, (base,), bloqueadas
+        )
+        resultado = self._buscar(problema, (base,))
+        verificar_camino(problema, resultado)
+        if not resultado.exito:
+            return float("inf"), resultado
+        return float(resultado.longitud), resultado
+
+    def _ruta_sin_retroceso(
+        self,
+        unidad: Unit,
+        objetivos: tuple[Position, ...],
+        bloqueadas: frozenset[Position],
+    ) -> ResultadoBusqueda | None:
+        """
+        Purpose:
+            Replantear la ruta de una unidad bloqueando su celda anterior, para
+            evitar que el camino calculado la devuelva al punto de partida.
+
+        Preconditions:
+            `unidad` pertenece al bando en turno; `objetivos` no está vacío;
             `bloqueadas` contiene las posiciones ocupadas por las demás unidades.
 
         Postconditions:
-            Devuelve `destino` si no es la posición previa de la unidad. En caso
-            contrario compara todas las celdas legales, incluida la previa, por
-            costo exacto restante hacia los objetivos y devuelve la de menor
-            costo; ante empate prefiere no retroceder. Si ninguna tiene ruta,
-            devuelve `destino`.
+            Devuelve una ruta alternativa usando el algoritmo seleccionado, o
+            `None` si no existe. No modifica el estado.
 
         Complexity:
-            O(k * (V + E) log V), con k <= 4 celdas legales; V y E son las
-            celdas y conexiones transitables del tablero.
+            O(S), donde S es el costo del algoritmo de búsqueda seleccionado.
 
         AI usage: Yes
         AI intervention:
@@ -346,43 +501,166 @@ class Partida:
             Pendiente de revisión por el equipo.
         """
         anterior = self._posicion_previa.get(unidad.id)
-        if anterior is None or destino != anterior:
-            return destino
+        if anterior is None or anterior in objetivos:
+            return None
 
-        candidatos = [
-            accion.destino
-            for accion in acciones_legales(estado, self.scenario)
-            if isinstance(accion, Mover) and accion.unidad_id == unidad.id
-        ]
-        if not candidatos:
-            return destino
+        problema = ProblemaMultiobjetivo(
+            self.scenario.tablero,
+            unidad.posicion,
+            objetivos,
+            bloqueadas | {anterior},
+        )
+        resultado = self._buscar(problema, objetivos)
+        verificar_camino(problema, resultado)
+        if not resultado.exito or resultado.longitud == 0:
+            return None
+        return resultado
 
-        mejor_destino = destino
-        mejor_clave: tuple[float, bool, int, int] | None = None
-        for candidato in candidatos:
-            problema = ProblemaMultiobjetivo(
-                self.scenario.tablero, candidato, objetivos, bloqueadas
-            )
-            resultado = ucs(problema)
-            if not resultado.exito:
+    def _despejar_ruta_portador(
+        self, estado: GameState, legales: tuple[Accion, ...]
+    ) -> tuple[Mover, str] | None:
+        """
+        Purpose:
+            Buscar un movimiento propio que abra una ruta para el portador
+            cuando ninguna unidad tiene camino disponible.
+
+        Preconditions:
+            `estado` es válido; `legales` son las acciones del bando en turno.
+
+        Postconditions:
+            Devuelve `(Mover, texto)` para el movimiento que minimiza la ruta del
+            portador, o `None` si ningún movimiento legal le abre una ruta. Usa
+            el algoritmo de búsqueda seleccionado.
+
+        Complexity:
+            O(M * S), donde M es el número de movimientos legales y S el costo
+            del algoritmo de búsqueda seleccionado.
+
+        AI usage: Yes
+        AI intervention:
+            Desempate por despeje de ruta propuesto con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        if estado.portador is None:
+            return None
+
+        portador = estado.unidad(estado.portador)
+        if portador is None or portador.bando != estado.turno:
+            return None
+
+        base = self.scenario.bases[portador.bando]
+        mejor: tuple[tuple[float, str, int, int], Mover, int] | None = None
+
+        for accion in legales:
+            if not isinstance(accion, Mover):
                 continue
-            clave = (
-                resultado.costo,
-                candidato == anterior,
-                candidato.row,
-                candidato.column,
-            )
-            if mejor_clave is None or clave < mejor_clave:
-                mejor_clave = clave
-                mejor_destino = candidato
 
-        return mejor_destino
+            unidades = tuple(
+                Unit(unidad.id, unidad.bando, unidad.tipo, accion.destino)
+                if unidad.id == accion.unidad_id
+                else unidad
+                for unidad in estado.unidades
+            )
+            portador_simulado = next(
+                unidad for unidad in unidades if unidad.id == portador.id
+            )
+            if portador_simulado.posicion == base:
+                return accion, f"{accion.unidad_id}: entra a la base"
+
+            bloqueadas = celdas_bloqueadas_para(
+                estado, self.scenario, portador_simulado, unidades
+            )
+            if base in bloqueadas:
+                continue
+
+            problema = ProblemaMultiobjetivo(
+                self.scenario.tablero,
+                portador_simulado.posicion,
+                (base,),
+                bloqueadas,
+            )
+            resultado = self._buscar(problema, (base,))
+            verificar_camino(problema, resultado)
+            if not resultado.exito or resultado.longitud == 0:
+                continue
+
+            clave = (
+                float(resultado.longitud),
+                accion.unidad_id,
+                accion.destino.row,
+                accion.destino.column,
+            )
+            if mejor is None or clave < mejor[0]:
+                mejor = (clave, accion, resultado.longitud)
+
+        if mejor is None:
+            return None
+
+        _, accion, longitud = mejor
+        return accion, (
+            f"{accion.unidad_id}: despeja la ruta del portador "
+            f"({longitud} pasos)"
+        )
+
+    def _movimiento_sin_retroceso(
+        self, legales: tuple[Accion, ...]
+    ) -> Mover | None:
+        """
+        Purpose:
+            Elegir un movimiento legal que no devuelva a una unidad a la celda
+            desde la que acaba de llegar.
+
+        Preconditions:
+            `legales` son las acciones del bando en turno.
+
+        Postconditions:
+            Devuelve el primer `Mover` que no sea un retroceso inmediato, o
+            `None` si todos los movimientos legales lo son.
+
+        Complexity:
+            O(M), donde M es el número de acciones legales.
+
+        AI usage: Yes
+        AI intervention:
+            Regla de respaldo anti-repetición propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        for accion in legales:
+            if not isinstance(accion, Mover):
+                continue
+            if self._posicion_previa.get(accion.unidad_id) == accion.destino:
+                continue
+            return accion
+        return None
 
     def _objetivos(self, estado: GameState, unidad: Unit) -> tuple:
-        """Calcula las celdas meta de una unidad propia según la situación."""
+        """
+        Purpose:
+            Calcular las celdas meta de una unidad propia según la situación.
+
+        Preconditions:
+            `estado` es válido; `unidad` pertenece al bando en turno.
+
+        Postconditions:
+            Devuelve la base propia si la unidad es portadora; las celdas
+            adyacentes al portador enemigo si el recurso lo lleva el rival; o
+            la celda del recurso si nadie lo transporta. Para un aliado del
+            portador devuelve una tupla vacía.
+
+        Complexity:
+            O(U), donde U es el número de unidades.
+
+        AI usage: No
+        AI intervention:
+            Ninguna.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
         bando = unidad.bando
         tablero = self.scenario.tablero
-        ocupadas = frozenset(otra.posicion for otra in estado.unidades)
+        bloqueadas = celdas_bloqueadas_para(estado, self.scenario, unidad)
         portador = estado.unidad(estado.portador) if estado.portador is not None else None
 
         if portador is not None and portador.bando == bando:
@@ -393,7 +671,7 @@ class Partida:
 
         if portador is not None:
             # Portador enemigo: acercarse para interceptar.
-            return objetivos_adyacentes(tablero, portador.posicion, ocupadas)
+            return objetivos_adyacentes(tablero, portador.posicion, bloqueadas)
 
         return (self.scenario.recurso,)
 

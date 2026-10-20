@@ -326,6 +326,44 @@ def _dibujar_bandera_portador(pantalla, centro, lado, imagen=None) -> None:
     pygame.draw.polygon(pantalla, COLOR_BORDE_CELDA, puntos, 1)
 
 
+def _desplazamientos_apilados(cantidad: int, lado: float) -> list[tuple[float, float]]:
+    """
+    Purpose:
+        Calcular desplazamientos pequeños para unidades que comparten celda.
+
+    Preconditions:
+        `cantidad` es el número de unidades en la celda y `lado` es el tamaño
+        de la celda en píxeles.
+
+    Postconditions:
+        Devuelve una lista de desplazamientos (dx, dy) en píxeles, uno por
+        unidad, distribuidos en una rejilla dentro de la celda.
+
+    Complexity:
+        O(cantidad).
+
+    AI usage: No
+    AI intervention:
+        Ninguna.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    if cantidad <= 1:
+        return [(0.0, 0.0)]
+
+    columnas = 2
+    filas = (cantidad + columnas - 1) // columnas
+    paso = min(lado * 0.28, lado * 0.62 / max(columnas, filas))
+    desplazamientos = []
+    for indice in range(cantidad):
+        fila = indice // columnas
+        columna = indice % columnas
+        dx = (columna - (columnas - 1) / 2) * paso
+        dy = (fila - (filas - 1) / 2) * paso
+        desplazamientos.append((dx, dy))
+    return desplazamientos
+
+
 def _dibujar_unidades(
     pantalla,
     vista,
@@ -348,8 +386,10 @@ def _dibujar_unidades(
 
     Postconditions:
         Cada unidad se dibuja con su sprite si el bando tiene imagen o con un
-        disco de color en caso contrario. La unidad portadora lleva además una
-        bandera pequeña que se mueve con ella.
+        disco de color en caso contrario. Si varias unidades comparten celda,
+        se desplazan ligeramente para que todas sean visibles. La unidad
+        portadora lleva además una bandera pequeña que se mueve con ella y se
+        dibuja al final.
 
     Complexity:
         O(U), U unidades.
@@ -364,14 +404,31 @@ def _dibujar_unidades(
     animar = bool(previas) and progreso < 1.0
     imagenes_bando = imagenes_bando or {}
 
+    ids_por_celda: dict[tuple[int, int], list[str]] = {}
     for unidad in vista.unidades:
+        ids_por_celda.setdefault((unidad.fila, unidad.columna), []).append(
+            unidad.id
+        )
+
+    desplazamientos: dict[str, tuple[float, float]] = {}
+    for ids in ids_por_celda.values():
+        for id_unidad, desplazamiento in zip(
+            sorted(ids), _desplazamientos_apilados(len(ids), layout.lado)
+        ):
+            desplazamientos[id_unidad] = desplazamiento
+
+    for unidad in sorted(
+        vista.unidades, key=lambda u: (u.id == vista.portador, u.id)
+    ):
         fila, columna = float(unidad.fila), float(unidad.columna)
         if animar and unidad.id in previas:
             fila_previa, columna_previa = previas[unidad.id]
             fila = fila_previa + (fila - fila_previa) * progreso
             columna = columna_previa + (columna - columna_previa) * progreso
 
-        centro = tuple(round(v) for v in layout.centro(fila, columna))
+        centro_x, centro_y = layout.centro(fila, columna)
+        dx, dy = desplazamientos.get(unidad.id, (0.0, 0.0))
+        centro = (round(centro_x + dx), round(centro_y + dy))
         color = COLOR_BANDO.get(unidad.bando, COLOR_TEXTO)
         sprite = imagenes_bando.get(unidad.bando)
 
