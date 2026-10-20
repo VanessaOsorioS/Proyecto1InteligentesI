@@ -10,7 +10,7 @@ Reglas cubiertas:
     - Turnos alternados.
     - Recolección automática del recurso.
     - Transferencia entre aliados adyacentes.
-    - Intercepción por un enemigo adyacente.
+    - Intercepción por un enemigo adyacente, con enfriamiento tras cada robo.
     - Pase de turno.
     - Victoria (portador en su base) y empates (límite de turnos / pases).
 """
@@ -31,6 +31,9 @@ from tacticalgrid.domain.state import GameState
 from tacticalgrid.domain.unit import Unit
 
 LIMITE_PASES_CONSECUTIVOS = 4
+
+TURNOS_ENTRE_ROBOS = 3
+"""Turnos completos que deben pasar antes de permitir otra intercepción."""
 
 DIRECCIONES_ORTOGONALES = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
@@ -125,8 +128,9 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
 
     Postconditions:
         Devuelve una tupla de acciones legales (Mover, Transferir, Interceptar).
-        `Pasar` solo aparece cuando el bando no tiene ninguna otra acción legal
-        disponible. Si la partida ya terminó, devuelve una tupla vacía.
+        `Interceptar` no aparece mientras `turnos_robo_bloqueado` sea mayor que
+        cero. `Pasar` solo aparece cuando el bando no tiene ninguna otra acción
+        legal disponible. Si la partida ya terminó, devuelve una tupla vacía.
 
     Complexity:
         O(U^2), donde U es el número de unidades.
@@ -160,8 +164,13 @@ def acciones_legales(estado: GameState, scenario: Scenario) -> tuple[Accion, ...
                 ):
                     acciones.append(Transferir(unidad.id, aliado.id))
 
-        # Intercepción de un portador enemigo adyacente.
-        if portador is not None and portador.bando != estado.turno:
+        # Intercepción de un portador enemigo adyacente, solo si el recurso
+        # ya cumplió los turnos de bloqueo posteriores al último robo.
+        if (
+            estado.turnos_robo_bloqueado == 0
+            and portador is not None
+            and portador.bando != estado.turno
+        ):
             if es_adyacente(unidad.posicion, portador.posicion):
                 acciones.append(Interceptar(unidad.id))
 
@@ -181,6 +190,7 @@ def _avanzar_turno(
     unidades: tuple[Unit, ...],
     portador: str | None,
     pases_consecutivos: int,
+    turnos_robo_bloqueado: int,
 ) -> GameState:
     """Construye el estado siguiente alternando el turno y sumando el turno."""
     return GameState(
@@ -189,6 +199,7 @@ def _avanzar_turno(
         portador=portador,
         numero_turno=estado.numero_turno + 1,
         pases_consecutivos=pases_consecutivos,
+        turnos_robo_bloqueado=turnos_robo_bloqueado,
     )
 
 
@@ -204,8 +215,9 @@ def aplicar_accion(
 
     Postconditions:
         Devuelve un GameState nuevo (el original no se modifica). Actualiza la
-        recogida automática, alterna el turno y ajusta los contadores.
-        Si la acción no es legal, lanza AccionInvalida.
+        recogida automática, alterna el turno, ajusta los contadores y
+        descuenta el bloqueo de robo (o lo reinicia si la acción es
+        Interceptar). Si la acción no es legal, lanza AccionInvalida.
 
     Complexity:
         O(U^2), donde U es el número de unidades.
@@ -213,6 +225,9 @@ def aplicar_accion(
     """
     if accion not in acciones_legales(estado, scenario):
         raise AccionInvalida(f"Acción no permitida en el estado actual: {accion!r}")
+
+    # Cualquier acción distinta de robar descuenta un turno de bloqueo.
+    bloqueo_restante = max(0, estado.turnos_robo_bloqueado - 1)
 
     if isinstance(accion, Mover):
         unidades = tuple(
@@ -228,15 +243,26 @@ def aplicar_accion(
         if portador is None and accion.destino == scenario.recurso:
             portador = accion.unidad_id
 
-        return _avanzar_turno(estado, unidades, portador, 0)
+        return _avanzar_turno(
+            estado, unidades, portador, 0, bloqueo_restante
+        )
 
     if isinstance(accion, Transferir):
         # Transferencia entre aliados: cambia el portador sin mover unidades.
-        return _avanzar_turno(estado, estado.unidades, accion.destino_id, 0)
+        return _avanzar_turno(
+            estado, estado.unidades, accion.destino_id, 0, bloqueo_restante
+        )
 
     if isinstance(accion, Interceptar):
-        # Intercepción: el enemigo adyacente pasa a ser el portador.
-        return _avanzar_turno(estado, estado.unidades, accion.unidad_id, 0)
+        # Intercepción: el enemigo adyacente pasa a ser el portador y se
+        # reinicia el enfriamiento para evitar robos consecutivos.
+        return _avanzar_turno(
+            estado,
+            estado.unidades,
+            accion.unidad_id,
+            0,
+            TURNOS_ENTRE_ROBOS,
+        )
 
     if isinstance(accion, Pasar):
         return _avanzar_turno(
@@ -244,6 +270,7 @@ def aplicar_accion(
             estado.unidades,
             estado.portador,
             estado.pases_consecutivos + 1,
+            bloqueo_restante,
         )
 
     raise AccionInvalida(f"Tipo de acción desconocido: {accion!r}")

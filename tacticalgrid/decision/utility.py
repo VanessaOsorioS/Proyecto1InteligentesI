@@ -209,11 +209,16 @@ def evaluar_estado(estado: GameState, scenario: Scenario, bando_max: str) -> flo
 
         # 3) Riesgo de intercepción: unidades enemigas adyacentes al portador
         # aliado (riesgo, penaliza) o unidades aliadas adyacentes al portador
-        # enemigo (oportunidad de interceptar, premia).
-        adyacentes = _unidades_adyacentes_a(
-            estado, bando_min if es_aliado else bando_max, portador.posicion
-        )
-        valor += -PESO_RIESGO * adyacentes if es_aliado else PESO_RIESGO * adyacentes
+        # enemigo (oportunidad de interceptar, premia). Mientras el recurso
+        # está bloqueado ninguna intercepción es legal, así que el término no
+        # aplica.
+        if estado.turnos_robo_bloqueado == 0:
+            adyacentes = _unidades_adyacentes_a(
+                estado, bando_min if es_aliado else bando_max, portador.posicion
+            )
+            valor += (
+                -PESO_RIESGO * adyacentes if es_aliado else PESO_RIESGO * adyacentes
+            )
     else:
         # 4) Control de la celda del recurso mientras nadie lo transporta.
         posiciones_max = tuple(

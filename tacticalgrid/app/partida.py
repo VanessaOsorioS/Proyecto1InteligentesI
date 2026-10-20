@@ -6,6 +6,9 @@ Cada turno, el bando en turno elige una acción según el algoritmo seleccionado
 - BFS, DFS, UCS, A* y Beam: búsqueda de ruta para una unidad propia hacia su
   objetivo (base si es portador, recurso si nadie lo lleva, o el portador
   enemigo si lo tiene). Si hay una intercepción disponible se usa directamente.
+  Si el primer paso devuelve a la unidad a la celda de la que viene, se compara
+  el costo exacto restante de las celdas legales (incluida la previa) y se
+  prefiere no retroceder para evitar ciclos de dos posiciones.
 
 No conoce pygame: la UI sólo consume `avanzar`, `posiciones_previas` y `resumen`.
 """
@@ -15,6 +18,7 @@ from dataclasses import dataclass
 from tacticalgrid.decision.alphabeta import poda_alfa_beta
 from tacticalgrid.decision.minimax import minimax
 from tacticalgrid.domain.actions import Accion, Interceptar, Mover, Transferir
+from tacticalgrid.domain.position import Position
 from tacticalgrid.domain.rules import (
     Resultado,
     acciones_legales,
@@ -106,6 +110,8 @@ class Partida:
         algoritmo: Etiqueta del algoritmo que usan ambos bandos.
         resultado: Resultado final o None si sigue en curso.
         historial: Lista de PasoPartida ejecutados.
+        _posicion_previa: Posición que ocupaba cada unidad antes de su última
+            acción de movimiento.
     """
 
     def __init__(self, scenario: Scenario, estado: GameState, algoritmo: str):
@@ -137,6 +143,7 @@ class Partida:
         self.anterior: GameState | None = None
         self.resultado: Resultado | None = resultado_partida(estado, scenario)
         self.historial: list[PasoPartida] = []
+        self._posicion_previa: dict[str, Position] = {}
         self._costo_minimo = min(
             (
                 terreno.cost
@@ -178,7 +185,15 @@ class Partida:
 
         estado = self.estado
         accion, texto = self._decidir(estado)
+        posiciones_antes = {
+            unidad.id: unidad.posicion for unidad in estado.unidades
+        }
         siguiente = aplicar_accion(estado, accion, self.scenario)
+
+        if isinstance(accion, Mover):
+            self._posicion_previa[accion.unidad_id] = posiciones_antes[
+                accion.unidad_id
+            ]
 
         paso = PasoPartida(
             numero_turno=estado.numero_turno,
@@ -216,6 +231,11 @@ class Partida:
             lineas.append(
                 f"Turno {self.estado.numero_turno}: juega bando {self.estado.turno}"
             )
+            if self.estado.turnos_robo_bloqueado > 0:
+                lineas.append(
+                    f"Robo bloqueado: "
+                    f"{self.estado.turnos_robo_bloqueado} turno(s)"
+                )
 
         if self.historial:
             ultimo = self.historial[-1]
@@ -248,7 +268,9 @@ class Partida:
             if isinstance(accion, Interceptar):
                 return accion, "intercepción directa (sin búsqueda)"
 
-        mejor: tuple[ResultadoBusqueda, Unit] | None = None
+        mejor: tuple[
+            ResultadoBusqueda, Unit, tuple[Position, ...], frozenset[Position]
+        ] | None = None
         for unidad in estado.unidades_de(estado.turno):
             bloqueadas = frozenset(
                 otra.posicion for otra in estado.unidades if otra.id != unidad.id
@@ -270,20 +292,91 @@ class Partida:
             if not resultado.exito or resultado.longitud == 0:
                 continue
             if mejor is None or resultado.costo < mejor[0].costo:
-                mejor = (resultado, unidad)
+                mejor = (resultado, unidad, objetivos, bloqueadas)
 
         if mejor is None:
             # Sin ruta disponible para ninguna unidad: primera acción legal.
             return legales[0], "sin ruta: acción por defecto"
 
-        resultado, unidad = mejor
-        destino = resultado.camino[1]
+        resultado, unidad, objetivos, bloqueadas = mejor
+        destino = self._paso_sin_retroceso(
+            estado, unidad, resultado.camino[1], objetivos, bloqueadas
+        )
         m = resultado.metricas
         texto = (
             f"{unidad.id}: costo {resultado.costo:g}, gen {m.generados}, "
             f"exp {m.expandidos}, {m.tiempo_segundos * 1000:.1f} ms"
         )
         return Mover(unidad.id, destino), texto
+
+    def _paso_sin_retroceso(
+        self,
+        estado: GameState,
+        unidad: Unit,
+        destino: Position,
+        objetivos: tuple[Position, ...],
+        bloqueadas: frozenset[Position],
+    ) -> Position:
+        """
+        Purpose:
+            Evitar que una unidad repita en su siguiente movimiento la celda
+            desde la que acaba de llegar, cuando el camino calculado la devuelve
+            a ella.
+
+        Preconditions:
+            `estado` es válido; `unidad` pertenece al bando en turno; `destino`
+            es una celda legal del camino calculado; `objetivos` no está vacío;
+            `bloqueadas` contiene las posiciones ocupadas por las demás unidades.
+
+        Postconditions:
+            Devuelve `destino` si no es la posición previa de la unidad. En caso
+            contrario compara todas las celdas legales, incluida la previa, por
+            costo exacto restante hacia los objetivos y devuelve la de menor
+            costo; ante empate prefiere no retroceder. Si ninguna tiene ruta,
+            devuelve `destino`.
+
+        Complexity:
+            O(k * (V + E) log V), con k <= 4 celdas legales; V y E son las
+            celdas y conexiones transitables del tablero.
+
+        AI usage: Yes
+        AI intervention:
+            Estrategia anti-oscilación propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        anterior = self._posicion_previa.get(unidad.id)
+        if anterior is None or destino != anterior:
+            return destino
+
+        candidatos = [
+            accion.destino
+            for accion in acciones_legales(estado, self.scenario)
+            if isinstance(accion, Mover) and accion.unidad_id == unidad.id
+        ]
+        if not candidatos:
+            return destino
+
+        mejor_destino = destino
+        mejor_clave: tuple[float, bool, int, int] | None = None
+        for candidato in candidatos:
+            problema = ProblemaMultiobjetivo(
+                self.scenario.tablero, candidato, objetivos, bloqueadas
+            )
+            resultado = ucs(problema)
+            if not resultado.exito:
+                continue
+            clave = (
+                resultado.costo,
+                candidato == anterior,
+                candidato.row,
+                candidato.column,
+            )
+            if mejor_clave is None or clave < mejor_clave:
+                mejor_clave = clave
+                mejor_destino = candidato
+
+        return mejor_destino
 
     def _objetivos(self, estado: GameState, unidad: Unit) -> tuple:
         """Calcula las celdas meta de una unidad propia según la situación."""

@@ -24,6 +24,8 @@ class GameState:
         portador: Identificador de la unidad que transporta el recurso, o None.
         numero_turno: Cantidad de turnos ejecutados (empieza en 1).
         pases_consecutivos: Pases consecutivos registrados (empieza en 0).
+        turnos_robo_bloqueado: Turnos que faltan para permitir otra
+            intercepción del recurso (0 significa que ya está permitida).
         contadores: Conteo derivado de unidades por bando (calculado).
     """
 
@@ -32,6 +34,7 @@ class GameState:
     portador: str | None
     numero_turno: int = 1
     pases_consecutivos: int = 0
+    turnos_robo_bloqueado: int = 0
     contadores: Mapping[str, int] = field(init=False, default_factory=dict)
 
     def __post_init__(self):
@@ -87,6 +90,14 @@ class GameState:
 
         if type(self.pases_consecutivos) is not int or self.pases_consecutivos < 0:
             raise ValueError("Los pases consecutivos no pueden ser negativos.")
+
+        if (
+            type(self.turnos_robo_bloqueado) is not int
+            or self.turnos_robo_bloqueado < 0
+        ):
+            raise ValueError(
+                "Los turnos de bloqueo de robo no pueden ser negativos."
+            )
 
         contadores = {"A": 0, "B": 0}
         for unidad in unidades:
@@ -224,4 +235,5 @@ class GameState:
             portador=portador,
             numero_turno=self.numero_turno,
             pases_consecutivos=self.pases_consecutivos,
+            turnos_robo_bloqueado=self.turnos_robo_bloqueado,
         )
