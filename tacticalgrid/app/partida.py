@@ -16,7 +16,8 @@ Cada turno, el bando en turno elige una acción según el algoritmo seleccionado
 No conoce pygame: la UI sólo consume `avanzar`, `posiciones_previas` y `resumen`.
 """
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, replace
 
 from tacticalgrid.decision.alphabeta import poda_alfa_beta
 from tacticalgrid.decision.minimax import minimax
@@ -36,7 +37,10 @@ from tacticalgrid.search.astar import buscar as astar
 from tacticalgrid.search.beam import buscar as beam
 from tacticalgrid.search.bfs import bfs
 from tacticalgrid.search.dfs import dfs
-from tacticalgrid.search.heuristics import crear_manhattan_multiple
+from tacticalgrid.search.heuristics import (
+    crear_distancia_exacta_multiple,
+    crear_manhattan_multiple,
+)
 from tacticalgrid.search.problem import (
     ProblemaMultiobjetivo,
     ResultadoBusqueda,
@@ -57,6 +61,8 @@ ALGORITMOS_BUSQUEDA = (
 )
 ALGORITMOS_DECISION = ("Minimax", "Alfa-Beta")
 ALGORITMOS = ALGORITMOS_BUSQUEDA + ALGORITMOS_DECISION
+HEURISTICAS = ("Manhattan", "Exacta")
+HEURISTICA_POR_DEFECTO = "Manhattan"
 
 
 @dataclass(frozen=True)
@@ -112,22 +118,31 @@ class Partida:
         scenario: Configuración estática del escenario.
         estado: Estado actual de la partida.
         algoritmo: Etiqueta del algoritmo que usan ambos bandos.
+        heuristica: Heurística de búsqueda ('Manhattan' o 'Exacta') para A*/Beam.
         resultado: Resultado final o None si sigue en curso.
         historial: Lista de PasoPartida ejecutados.
         _posicion_previa: Posición que ocupaba cada unidad antes de su última
             acción de movimiento.
     """
 
-    def __init__(self, scenario: Scenario, estado: GameState, algoritmo: str):
+    def __init__(
+        self,
+        scenario: Scenario,
+        estado: GameState,
+        algoritmo: str,
+        heuristica: str = HEURISTICA_POR_DEFECTO,
+    ):
         """
         Purpose:
             Crear una partida lista para ejecutar turnos.
 
         Preconditions:
-            `scenario` y `estado` son coherentes; `algoritmo` está en ALGORITMOS.
+            `scenario` y `estado` son coherentes; `algoritmo` está en ALGORITMOS;
+            `heuristica` está en HEURISTICAS.
 
         Postconditions:
-            Lanza ValueError si el algoritmo no existe. No ejecuta ningún turno.
+            Lanza ValueError si el algoritmo o la heurística no existen. Guarda la
+            heurística aunque el algoritmo no la use. No ejecuta ningún turno.
 
         Complexity:
             O(T), donde T es el número de tipos de terreno.
@@ -141,9 +156,13 @@ class Partida:
         if algoritmo not in ALGORITMOS:
             raise ValueError(f"Algoritmo desconocido: '{algoritmo}'.")
 
+        if heuristica not in HEURISTICAS:
+            raise ValueError(f"Heurística desconocida: '{heuristica}'.")
+
         self.scenario = scenario
         self.estado = estado
         self.algoritmo = algoritmo
+        self.heuristica = heuristica
         self.anterior: GameState | None = None
         self.resultado: Resultado | None = resultado_partida(estado, scenario)
         self.historial: list[PasoPartida] = []
@@ -347,7 +366,8 @@ class Partida:
         m = resultado.metricas
         texto = (
             f"{unidad.id}: costo {resultado.costo:g}, gen {m.generados}, "
-            f"exp {m.expandidos}, {m.tiempo_segundos * 1000:.1f} ms"
+            f"exp {m.expandidos}, {m.tiempo_segundos * 1000:.1f} ms, "
+            f"h {self.heuristica}"
         )
         return Mover(unidad.id, destino), texto
 
@@ -676,7 +696,29 @@ class Partida:
         return (self.scenario.recurso,)
 
     def _buscar(self, problema: ProblemaMultiobjetivo, objetivos) -> ResultadoBusqueda:
-        """Ejecuta el algoritmo de búsqueda seleccionado sobre el problema."""
+        """
+        Purpose:
+            Ejecutar el algoritmo de búsqueda seleccionado sobre el problema,
+            usando la heurística configurada en A* y Beam.
+
+        Preconditions:
+            `problema` es coherente con `objetivos`; la partida está activa.
+
+        Postconditions:
+            Devuelve el resultado del algoritmo. En A* y Beam registra en las
+            métricas el tiempo de construcción de la heurística (Manhattan o
+            distancia exacta). En BFS, DFS y UCS esa métrica queda en 0.0.
+
+        Complexity:
+            La del algoritmo seleccionado; la distancia exacta añade una
+            construcción O(F*C*log(F*C)) antes de A* o Beam.
+
+        AI usage: Yes
+        AI intervention:
+            Selección de heurística propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
         nombre = self.algoritmo
         if nombre == "BFS":
             return bfs(problema)
@@ -685,9 +727,27 @@ class Partida:
         if nombre == "UCS":
             return ucs(problema)
 
-        heuristica = crear_manhattan_multiple(objetivos, self._costo_minimo)
-        if nombre == "A*":
-            return astar(problema, heuristica)
+        inicio_heuristica = time.perf_counter()
+        if self.heuristica == "Exacta":
+            heuristica = crear_distancia_exacta_multiple(
+                problema.tablero, objetivos, problema.bloqueadas
+            )
+        else:
+            heuristica = crear_manhattan_multiple(objetivos, self._costo_minimo)
+        tiempo_heuristica = time.perf_counter() - inicio_heuristica
 
-        ancho = int(nombre.split("k=")[1])
-        return beam(problema, heuristica, ancho)
+        if nombre == "A*":
+            resultado = astar(problema, heuristica)
+        else:
+            ancho = int(nombre.split("k=")[1])
+            resultado = beam(problema, heuristica, ancho)
+
+        return ResultadoBusqueda(
+            camino=resultado.camino,
+            costo=resultado.costo,
+            exito=resultado.exito,
+            metricas=replace(
+                resultado.metricas,
+                tiempo_heuristica_segundos=tiempo_heuristica,
+            ),
+        )

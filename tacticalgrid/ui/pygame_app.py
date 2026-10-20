@@ -10,10 +10,12 @@ from tkinter import filedialog
 from tacticalgrid.app.controller import (
     cargar_escenario,
     algoritmos_disponibles,
+    heuristicas_disponibles,
     nueva_partida,
     vista_de_estado,
     ScenarioVista,
 )
+from tacticalgrid.app.partida import ALGORITMOS_DECISION, HEURISTICA_POR_DEFECTO
 from tacticalgrid.io.scenario_validator import ScenarioValidationError
 from tacticalgrid.ui import panels, renderer
 
@@ -55,9 +57,13 @@ class PygameApp:
         self.error: str | None = None
         self.boton = None
         self.boton_reiniciar = None
+        self.boton_ejecutar = None
         self.algoritmos = algoritmos_disponibles()
         self.botones_algoritmos = ()
         self.algoritmo_seleccionado: str | None = None
+        self.heuristicas = heuristicas_disponibles()
+        self.botones_heuristicas = ()
+        self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
         self.partida = None
         self.ultimo_paso_ms: int | None = None
 
@@ -121,6 +127,8 @@ class PygameApp:
         self.partida = None
         self.ultimo_paso_ms = None
         self.algoritmo_seleccionado = None
+        self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
+        self.boton_ejecutar = None
         try:
             self.vista = cargar_escenario(ruta)
             self.error = None
@@ -132,14 +140,122 @@ class PygameApp:
             self.error = f"No se pudo cargar: {error}"
 
     def _iniciar_partida(self, algoritmo: str) -> None:
-        """Crea una partida nueva en la que ambos bandos usan `algoritmo`."""
+        """Crea una partida nueva con el algoritmo y la heurística seleccionados."""
         try:
-            self.partida = nueva_partida(self.vista, algoritmo)
+            self.partida = nueva_partida(
+                self.vista, algoritmo, self.heuristica_seleccionada
+            )
             self.algoritmo_seleccionado = algoritmo
             self.ultimo_paso_ms = None
             self.error = None
         except (ValueError, OSError) as error:
             self.error = f"No se pudo iniciar la partida: {error}"
+
+    @staticmethod
+    def _usa_heuristica(algoritmo: str | None) -> bool:
+        """
+        Purpose:
+            Indicar si un algoritmo de búsqueda usa heurística seleccionable.
+
+        Preconditions:
+            `algoritmo` es una etiqueta del catálogo o None.
+
+        Postconditions:
+            Devuelve True para A* y cualquier variante de Beam; False en otro caso.
+
+        Complexity:
+            O(1).
+
+        AI usage: Yes
+        AI intervention:
+            Clasificación de algoritmos informados propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        return algoritmo == "A*" or (
+            algoritmo is not None and algoritmo.startswith("Beam")
+        )
+
+    def _puede_configurar(self) -> bool:
+        """
+        Purpose:
+            Indicar si el usuario puede elegir heurística y ejecutar la partida.
+
+        Preconditions:
+            La aplicación tiene un escenario cargado o None.
+
+        Postconditions:
+            Devuelve True solo si hay escenario, el algoritmo seleccionado es
+            A*/Beam y no hay una partida activa. Una partida terminada permite
+            volver a ejecutar.
+
+        Complexity:
+            O(1).
+
+        AI usage: Yes
+        AI intervention:
+            Regla de habilitación de controles propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        return (
+            self.vista is not None
+            and self._usa_heuristica(self.algoritmo_seleccionado)
+            and (self.partida is None or self.partida.terminada)
+        )
+
+    def _seleccionar_algoritmo(self, algoritmo: str) -> None:
+        """
+        Purpose:
+            Aplicar la selección de algoritmo con el flujo de la interfaz.
+
+        Preconditions:
+            `algoritmo` pertenece al catálogo de búsqueda.
+
+        Postconditions:
+            Si es A* o Beam, deja la partida en None para esperar heurística y
+            Ejecutar. Si es cualquier otro, inicia la partida de inmediato.
+
+        Complexity:
+            O(1) para A*/Beam; la de `_iniciar_partida` en los demás.
+
+        AI usage: Yes
+        AI intervention:
+            Separación entre selección y ejecución propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        if self._usa_heuristica(algoritmo):
+            self.partida = None
+            self.ultimo_paso_ms = None
+            self.algoritmo_seleccionado = algoritmo
+            self.error = None
+            return
+        self._iniciar_partida(algoritmo)
+
+    def _ejecutar(self) -> None:
+        """
+        Purpose:
+            Iniciar A*/Beam con la heurística seleccionada.
+
+        Preconditions:
+            `_puede_configurar()` es verdadero.
+
+        Postconditions:
+            Crea una `Partida` nueva o conserva el estado si el clic no aplica.
+
+        Complexity:
+            La de `_iniciar_partida`; O(1) si no se ejecuta.
+
+        AI usage: Yes
+        AI intervention:
+            Acción del botón Ejecutar propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        if not self._puede_configurar():
+            return
+        self._iniciar_partida(self.algoritmo_seleccionado)
 
     def _reiniciar(self) -> None:
         """Vuelve al estado inicial del escenario y deselecciona el algoritmo."""
@@ -148,6 +264,8 @@ class PygameApp:
         self.partida = None
         self.ultimo_paso_ms = None
         self.algoritmo_seleccionado = None
+        self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
+        self.boton_ejecutar = None
         self.error = None
 
     def _actualizar(self) -> None:
@@ -200,10 +318,20 @@ class PygameApp:
                         self.cargar(ruta)
                 elif self.boton_reiniciar and self.boton_reiniciar.contiene(evento.pos):
                     self._reiniciar()
+                elif (
+                    self.boton_ejecutar
+                    and self.boton_ejecutar.contiene(evento.pos)
+                    and self._puede_configurar()
+                ):
+                    self._ejecutar()
                 elif self.vista is not None:
                     for boton in self.botones_algoritmos:
                         if boton.contiene(evento.pos):
-                            self._iniciar_partida(boton.clave)
+                            self._seleccionar_algoritmo(boton.clave)
+                            break
+                    for boton in self.botones_heuristicas:
+                        if self._puede_configurar() and boton.contiene(evento.pos):
+                            self.heuristica_seleccionada = boton.clave
                             break
 
     def _elegir_archivo(self) -> str | None:
@@ -236,6 +364,26 @@ class PygameApp:
             rect_panel,
             self.boton_reiniciar.rect.bottom + 34,
             self.algoritmos,
+            alto=26,
+            espacio=6,
+        )
+        y_heuristicas = (
+            max(boton.rect.bottom for boton in self.botones_algoritmos) + 34
+            if self.botones_algoritmos
+            else self.boton_reiniciar.rect.bottom + 34
+        )
+        self.botones_heuristicas = panels.construir_botones_heuristicas(
+            rect_panel,
+            y_heuristicas,
+            self.heuristicas,
+        )
+        y_ejecutar = (
+            max(boton.rect.bottom for boton in self.botones_heuristicas) + 8
+            if self.botones_heuristicas
+            else y_heuristicas
+        )
+        self.boton_ejecutar = panels.construir_boton_ejecutar(
+            rect_panel, y_ejecutar
         )
 
         vista_mostrada = self.vista
@@ -269,6 +417,12 @@ class PygameApp:
             )
 
         textos_partida = self.partida.resumen() if self.partida is not None else ()
+        if self.algoritmo_seleccionado in ALGORITMOS_DECISION:
+            heuristica_mostrada = "Exacta (utilidad)"
+        elif self._usa_heuristica(self.algoritmo_seleccionado):
+            heuristica_mostrada = self.heuristica_seleccionada
+        else:
+            heuristica_mostrada = "no aplica"
         panels.dibujar_panel(
             self.pantalla,
             vista_mostrada,
@@ -281,5 +435,10 @@ class PygameApp:
             textos_partida,
             self.boton_reiniciar,
             self.imagenes_terreno,
+            self.botones_heuristicas,
+            self.heuristica_seleccionada,
+            boton_ejecutar=self.boton_ejecutar,
+            heuristicas_habilitadas=self._puede_configurar(),
+            heuristica_hud=heuristica_mostrada,
         )
         pygame.display.flip()

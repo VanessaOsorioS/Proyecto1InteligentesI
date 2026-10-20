@@ -1,7 +1,18 @@
+import math
+from functools import lru_cache
+
+from tacticalgrid.domain.board import Board
 from tacticalgrid.domain.position import Position
-from tacticalgrid.domain.rules import es_adyacente, resultado_partida
+from tacticalgrid.domain.rules import (
+    celdas_bloqueadas_para,
+    es_adyacente,
+    resultado_partida,
+)
 from tacticalgrid.domain.scenario import Scenario
 from tacticalgrid.domain.state import GameState
+from tacticalgrid.domain.terrain import Terrain
+from tacticalgrid.domain.unit import Unit
+from tacticalgrid.search.heuristics import distancias_exactas
 
 #Escala de utilidad
 
@@ -32,55 +43,229 @@ PESO_RIESGO = 5.0
 """Peso por cada unidad adyacente al portador (riesgo u oportunidad)."""
 
 
-def distancia_manhattan(origen: Position, destino: Position) -> int:
+def _firma_tablero(tablero: Board) -> tuple:
     """
     Purpose:
-        Medir la distancia en celdas entre dos posiciones (movimientos ortogonales).
+        Construir una huella inmutable y hashable del tablero para cachear mapas.
 
     Preconditions:
-        `origen` y `destino` son Position válidas.
+        `tablero` es un Board válido.
 
     Postconditions:
-        Devuelve la suma de diferencias absolutas de fila y columna. Coincide
-        con el número mínimo de acciones `Mover` necesarias sin obstáculos.
+        Devuelve una tupla con filas, columnas, celdas y tipos de terreno.
+
+    Complexity:
+        O(T log T), T cantidad de tipos de terreno.
+
+    AI usage: Yes
+    AI intervention:
+        Huella de tablero propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    terrenos = tuple(
+        sorted(
+            (nombre, terreno.walkable, terreno.cost)
+            for nombre, terreno in tablero.terrain_types.items()
+        )
+    )
+    return (tablero.rows, tablero.columns, tablero.cells, terrenos)
+
+
+@lru_cache(maxsize=1024)
+def _mapa_distancias(
+    firma: tuple,
+    objetivo: Position,
+    bloqueadas: frozenset[Position],
+) -> dict[Position, float]:
+    """
+    Purpose:
+        Cachear el mapa de costo real mínimo hacia `objetivo` bajo un conjunto
+        de celdas bloqueadas.
+
+    Preconditions:
+        `firma` proviene de `_firma_tablero`; `objetivo` es una Position;
+        `bloqueadas` es un frozenset de Position.
+
+    Postconditions:
+        Devuelve un diccionario Position -> costo real mínimo. Si el objetivo
+        está fuera, es un obstáculo o está bloqueado, devuelve un dict vacío.
+        El diccionario se comparte entre llamadas: los consumidores no deben
+        modificarlo.
+
+    Complexity:
+        O(F*C*log(F*C)) en el primer cálculo; O(1) en aciertos de caché.
+
+    AI usage: Yes
+    AI intervention:
+        Caché de mapas de distancia propuesto con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    filas, columnas, celdas, terrenos = firma
+    tablero = Board(
+        filas,
+        columnas,
+        celdas,
+        {nombre: Terrain(nombre, walkable, costo) for nombre, walkable, costo in terrenos},
+    )
+
+    if (
+        not tablero.is_inside(objetivo)
+        or not tablero.is_walkable(objetivo)
+        or objetivo in bloqueadas
+    ):
+        return {}
+
+    return distancias_exactas(tablero, (objetivo,), bloqueadas)
+
+
+def _maximo_finito(mapa: dict[Position, float]) -> float:
+    """
+    Purpose:
+        Obtener el mayor costo finito de un mapa de distancias.
+
+    Preconditions:
+        `mapa` asocia posiciones con costos reales o infinitos.
+
+    Postconditions:
+        Devuelve el máximo finito, o 0.0 si no hay ninguno.
+
+    Complexity:
+        O(N), N cantidad de posiciones del mapa.
+
+    AI usage: Yes
+    AI intervention:
+        Normalización auxiliar propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    finitos = [costo for costo in mapa.values() if math.isfinite(costo)]
+    return max(finitos) if finitos else 0.0
+
+
+def _normalizar(costo: float, maximo: float) -> float:
+    """
+    Purpose:
+        Escalar un costo real al intervalo [0, 1] usando `maximo` como referencia.
+
+    Preconditions:
+        `costo` es un costo real o infinito; `maximo` es >= 0.
+
+    Postconditions:
+        Devuelve 0.0 si el costo es 0; 1.0 si no hay ruta o si el costo alcanza
+        o supera el máximo. Un máximo 0 con costo 0 se interpreta como 0.0.
 
     Complexity:
         O(1).
 
     AI usage: Yes
     AI intervention:
-        Función auxiliar propuesta con asistencia de IA.
-        
+        Normalización de la distancia exacta propuesta con asistencia de IA.
     Student validation:
         Pendiente de revisión por el equipo.
     """
-    return abs(origen.row - destino.row) + abs(origen.column - destino.column)
-
-
-def _normalizar(distancia: int, scenario: Scenario) -> float:
-    """Escala una distancia al intervalo [0, 1] según el tamaño del tablero."""
-    maximo = (scenario.tablero.rows - 1) + (scenario.tablero.columns - 1)
+    if not math.isfinite(costo):
+        return 1.0
     if maximo <= 0:
-        return 0.0
-    return min(1.0, distancia / maximo)
+        return 0.0 if costo == 0 else 1.0
+    return min(1.0, costo / maximo)
+
+
+def _distancia_normalizada(
+    estado: GameState,
+    unidad: Unit,
+    objetivo: Position,
+    scenario: Scenario,
+) -> float:
+    """
+    Purpose:
+        Medir la distancia real normalizada de una unidad a un objetivo,
+        respetando muros, costos y ocupación.
+
+    Preconditions:
+        `estado` es válido; `unidad` pertenece al estado; `objetivo` es la meta;
+        `scenario` es el escenario de la partida.
+
+    Postconditions:
+        Devuelve un valor en [0, 1]. 0.0 significa que la unidad está sobre el
+        objetivo; 1.0 significa que no hay ruta o que su costo es el mayor
+        posible del tablero para esa meta.
+
+    Complexity:
+        O(F*C*log(F*C)) en el primer cálculo y O(1) con caché.
+
+    AI usage: Yes
+    AI intervention:
+        Distancia exacta con ocupación propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    firma = _firma_tablero(scenario.tablero)
+    maximo = _maximo_finito(_mapa_distancias(firma, objetivo, frozenset()))
+    bloqueadas = celdas_bloqueadas_para(estado, scenario, unidad)
+    costo = _mapa_distancias(firma, objetivo, bloqueadas).get(unidad.posicion, math.inf)
+    return _normalizar(costo, maximo)
 
 
 def _minima_distancia_a(
-    positions: tuple[Position, ...], objetivo: Position, scenario: Scenario
+    estado: GameState,
+    bando: str,
+    objetivo: Position,
+    scenario: Scenario,
 ) -> float:
-    """Menor distancia (normalizada) de un conjunto de posiciones a un objetivo."""
-    if not positions:
+    """
+    Purpose:
+        Obtener la menor distancia real normalizada de un bando a un objetivo.
+
+    Preconditions:
+        `estado` es válido; `bando` es 'A' o 'B'; `objetivo` es una Position;
+        `scenario` es válido.
+
+    Postconditions:
+        Devuelve un valor en [0, 1]; si el bando no tiene unidades, 1.0.
+
+    Complexity:
+        O(U * F*C*log(F*C)) sin caché; O(U) con mapas cacheados.
+
+    AI usage: Yes
+    AI intervention:
+        Distancia mínima propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    distancias = [
+        _distancia_normalizada(estado, unidad, objetivo, scenario)
+        for unidad in estado.unidades_de(bando)
+    ]
+    if not distancias:
         # Un bando sin unidades nunca estará "cerca": peor caso normalizado.
         return 1.0
-    return _normalizar(
-        min(distancia_manhattan(pos, objetivo) for pos in positions), scenario
-    )
+    return min(distancias)
 
 
 def _unidades_adyacentes_a(
     estado: GameState, bando: str, objetivo: Position
 ) -> int:
-    """Cuenta las unidades de `bando` ortogonalmente adyacentes a `objetivo`."""
+    """
+    Purpose:
+        Contar las unidades de un bando ortogonalmente adyacentes a una celda.
+
+    Preconditions:
+        `estado` es válido; `bando` es 'A' o 'B'; `objetivo` es una Position.
+
+    Postconditions:
+        Devuelve el número de unidades adyacentes; no modifica el estado.
+
+    Complexity:
+        O(U), U cantidad de unidades del bando.
+
+    AI usage: Yes
+    AI intervention:
+        Conteo de adyacencias propuesto con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
     return sum(
         1
         for unidad in estado.unidades_de(bando)
@@ -89,34 +274,35 @@ def _unidades_adyacentes_a(
 
 
 def _progreso_portador(
-    posicion: Position, base: Position | None, scenario: Scenario
+    estado: GameState,
+    portador: Unit,
+    base: Position | None,
+    scenario: Scenario,
 ) -> float:
     """
     Purpose:
-        Medir el progreso de un portador hacia su base en [0, 1].
+        Medir el progreso de un portador hacia su base en [0, 1] con distancia real.
 
     Preconditions:
-        `posicion` es la Position del portador; `base` es la Position de la
-        base de SU bando (o None); `scenario` es un Scenario válido.
+        `estado` es válido; `portador` pertenece al estado; `base` es la Position
+        de la base de SU bando (o None); `scenario` es un Scenario válido.
 
     Postconditions:
-        Devuelve 1 - distancia_normalizada, es decir 1.0 en la base y 0.0 a la
-        distancia máxima del tablero. Si `base` es None, devuelve 0.0.
-        Es una aproximación geométrica (Manhattan): no considera muros ni
-        ocupación de casillas.
+        Devuelve 1 - distancia_real_normalizada, es decir 1.0 sobre la base y
+        0.0 si no hay ruta. Modela muros, costos de terreno y ocupación.
 
     Complexity:
-        O(1).
+        O(F*C*log(F*C)) en el primer cálculo; O(1) con caché.
 
     AI usage: Yes
     AI intervention:
-        Función auxiliar propuesta con asistencia de IA (revisión del equipo).
+        Progreso con distancia exacta propuesto con asistencia de IA.
     Student validation:
         Pendiente de revisión por el equipo.
     """
     if base is None:
         return 0.0
-    return 1.0 - _normalizar(distancia_manhattan(posicion, base), scenario)
+    return 1.0 - _distancia_normalizada(estado, portador, base, scenario)
 
 
 def utilidad_terminal(
@@ -173,10 +359,12 @@ def evaluar_estado(estado: GameState, scenario: Scenario, bando_max: str) -> flo
         Los estados terminales se evalúan ANTES que la heurística: un portador
         que alcanza su propia base produce +/-VICTORIA, nunca el valor
         heurístico de progreso.
+        El progreso y el control usan la distancia real con Dijkstra: modelan
+        muros, costos de terreno y ocupación de unidades.
         No modifica `estado` ni `scenario`.
 
     Complexity:
-        O(U), donde U es el número de unidades.
+        O(U * F*C*log(F*C)) en el peor caso sin caché; O(U) con mapas cacheados.
 
     AI usage: Yes
     AI intervention:
@@ -200,10 +388,10 @@ def evaluar_estado(estado: GameState, scenario: Scenario, bando_max: str) -> flo
     if portador is not None:
         es_aliado = portador.bando == bando_max
 
-        # 2) Portador: posesión fija + progreso hacia la base de SU bando.
+        # 2) Portador: posesión fija + progreso real hacia la base de SU bando.
         #    Se suma si el portador es de MAX; se resta si es de MIN.
         base_portador = scenario.bases.get(portador.bando)
-        progreso = _progreso_portador(portador.posicion, base_portador, scenario)
+        progreso = _progreso_portador(estado, portador, base_portador, scenario)
         valor_portador = PESO_POSESION + PESO_PROGRESO * progreso
         valor += valor_portador if es_aliado else -valor_portador
 
@@ -221,14 +409,8 @@ def evaluar_estado(estado: GameState, scenario: Scenario, bando_max: str) -> flo
             )
     else:
         # 4) Control de la celda del recurso mientras nadie lo transporta.
-        posiciones_max = tuple(
-            unidad.posicion for unidad in estado.unidades_de(bando_max)
-        )
-        posiciones_min = tuple(
-            unidad.posicion for unidad in estado.unidades_de(bando_min)
-        )
-        cerca_max = _minima_distancia_a(posiciones_max, scenario.recurso, scenario)
-        cerca_min = _minima_distancia_a(posiciones_min, scenario.recurso, scenario)
+        cerca_max = _minima_distancia_a(estado, bando_max, scenario.recurso, scenario)
+        cerca_min = _minima_distancia_a(estado, bando_min, scenario.recurso, scenario)
         valor += PESO_RECURSO * (cerca_min - cerca_max)
 
     # Clamp defensivo: garantiza |heurística| <= LIMITE_HEURISTICA < VICTORIA.

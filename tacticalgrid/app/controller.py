@@ -7,7 +7,12 @@ la coherencia del tablero.
 
 from dataclasses import dataclass, replace
 
-from tacticalgrid.app.partida import ALGORITMOS_BUSQUEDA, Partida
+from tacticalgrid.app.partida import (
+    ALGORITMOS_BUSQUEDA,
+    HEURISTICA_POR_DEFECTO,
+    HEURISTICAS,
+    Partida,
+)
 from tacticalgrid.domain.board import Board
 from tacticalgrid.domain.state import GameState
 from tacticalgrid.domain.terrain import Terrain
@@ -25,27 +30,62 @@ def algoritmos_disponibles() -> tuple[str, ...]:
         Ninguna.
 
     Postconditions:
-        Devuelve una tupla inmutable con las etiquetas seleccionables. Incluye
-        búsqueda (BFS, DFS, UCS, A*, Beam) y decisión (Minimax, Alfa-Beta).
+        Devuelve una tupla inmutable con las etiquetas seleccionables de búsqueda
+        (BFS, DFS, UCS, A*, Beam). Minimax y Alfa-Beta siguen disponibles por API,
+        pero no se eligen desde la interfaz.
 
     Complexity:
         O(1).
 
+    AI usage: Yes
+    AI intervention:
+        Catálogo de algoritmos expuesto con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
     """
     return ALGORITMOS_DISPONIBLES
 
 
-def nueva_partida(vista: "ScenarioVista", algoritmo: str) -> Partida:
+def heuristicas_disponibles() -> tuple[str, ...]:
+    """
+    Purpose:
+        Exponer las heurísticas que la interfaz puede seleccionar para A* y Beam.
+
+    Preconditions:
+        Ninguna.
+
+    Postconditions:
+        Devuelve una tupla inmutable con 'Manhattan' y 'Exacta'.
+
+    Complexity:
+        O(1).
+
+    AI usage: Yes
+    AI intervention:
+        Catálogo de heurísticas expuesto con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    return HEURISTICAS
+
+
+def nueva_partida(
+    vista: "ScenarioVista",
+    algoritmo: str,
+    heuristica: str = HEURISTICA_POR_DEFECTO,
+) -> Partida:
     """
     Purpose:
         Crear una partida nueva a partir del escenario cargado en la vista.
 
     Preconditions:
-        `vista` proviene de `cargar_escenario` y `algoritmo` está en el catálogo.
+        `vista` proviene de `cargar_escenario`; `algoritmo` está en el catálogo;
+        `heuristica` está en el catálogo de heurísticas.
 
     Postconditions:
         Devuelve una Partida en su estado inicial. Propaga ValueError si el
-        algoritmo no existe.
+        algoritmo o la heurística no existen. La heurística solo afecta a A* y
+        Beam; los demás algoritmos la conservan pero no la usan.
 
     Complexity:
         O(F * C + U + T) por la reconstrucción del modelo.
@@ -57,7 +97,7 @@ def nueva_partida(vista: "ScenarioVista", algoritmo: str) -> Partida:
         Pendiente de ejecución y validación del equipo.
     """
     modelo = cargar_modelo(vista.ruta)
-    return Partida(modelo.scenario, modelo.estado, algoritmo)
+    return Partida(modelo.scenario, modelo.estado, algoritmo, heuristica)
 
 
 def vista_de_estado(vista: "ScenarioVista", estado: GameState) -> "ScenarioVista":

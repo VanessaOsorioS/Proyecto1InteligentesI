@@ -8,15 +8,18 @@ la meta sin sobrestimarlo:
 - `crear_manhattan`: distancia Manhattan multiplicada por el costo mínimo de terreno.
   Cada paso mueve una celda y cuesta al menos `costo_minimo`, así que nunca
   sobrestima. Con costo mínimo 1 (caso del proyecto) es la distancia Manhattan pura.
-- `crear_distancia_exacta`: costo real de la mejor ruta hasta la meta, calculado una
-  sola vez con Dijkstra desde la meta. Es el heurístico perfecto, así que A* expande
-  los nodos estrictamente necesarios para la ruta óptima.
+- `crear_distancia_exacta` y `crear_distancia_exacta_multiple`: costo real de la
+  mejor ruta hasta una o varias metas, calculado una sola vez con Dijkstra inverso
+  desde las metas. Es el heurístico perfecto, así que A* expande los nodos
+  estrictamente necesarios para la ruta óptima.
+- `distancias_exactas`: núcleo compartido que devuelve el mapa completo de costos
+  reales hacia las metas, usado por las heurísticas y por la utilidad de decisión.
 """
 
 
 import heapq
 import math
-from typing import Callable
+from typing import Callable, Iterable
 
 
 from tacticalgrid.domain.board import Board
@@ -44,7 +47,11 @@ def crear_manhattan(objetivo: Position, costo_minimo: float = 1) -> Callable[[Po
     Complexity:
         O(1) por evaluación.
 
-
+    AI usage: Yes
+    AI intervention:
+        Heurística Manhattan propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
     """
     if not isinstance(objetivo, Position):
         raise ValueError("El objetivo debe ser una Position.")
@@ -107,57 +114,67 @@ def crear_manhattan_multiple(
     return heuristica
 
 
-def crear_distancia_exacta(
+def distancias_exactas(
     tablero: Board,
-    objetivo: Position,
+    objetivos: Iterable[Position],
     bloqueadas: frozenset[Position] = frozenset(),
-) -> Callable[[Position], float]:
+) -> dict[Position, float]:
     """
     Purpose:
-        Construir la heurística de distancia exacta precalculando Dijkstra desde la meta.
-
+        Calcular, con un Dijkstra inverso multi-origen, el costo real mínimo de
+        cada celda hasta la meta más cercana del conjunto `objetivos`.
 
     Preconditions:
-        `tablero` es un Board y `objetivo` es una celda transitable; `bloqueadas`
-        son celdas que la búsqueda no puede atravesar.
-
+        `tablero` es un Board; `objetivos` es un iterable no vacío de Position
+        transitables y no bloqueadas; `bloqueadas` son celdas que no se pueden
+        atravesar.
 
     Postconditions:
-        Devuelve h(p) = costo real mínimo de p a la meta, o infinito si no hay ruta.
-        Entrar a una celda cuesta su costo de terreno, igual que en `ProblemaTablero`.
-
+        Devuelve un diccionario Position -> costo real mínimo hacia la meta más
+        cercana. Las celdas sin ruta no aparecen. Entrar a una celda cuesta su
+        costo de terreno, igual que en `ProblemaTablero`. No modifica entradas.
 
     Complexity:
-        O(F*C*log(F*C)) una sola vez; O(1) por evaluación.
+        O(F*C*log(F*C)) una sola vez, F filas y C columnas.
 
-
+    AI usage: Yes
+    AI intervention:
+        Generalización multi-origen del Dijkstra inverso propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
     """
+    metas = tuple(objetivos)
+    if not metas:
+        raise ValueError("Debe haber al menos un objetivo.")
+
     if any(not isinstance(p, Position) for p in bloqueadas):
         raise ValueError("Todas las celdas bloqueadas deben ser Position.")
 
+    for objetivo in metas:
+        if not isinstance(objetivo, Position):
+            raise ValueError("Cada objetivo debe ser una Position.")
 
-    if not tablero.is_inside(objetivo):
-        raise ValueError("El objetivo está fuera del tablero.")
+        if not tablero.is_inside(objetivo):
+            raise ValueError(f"El objetivo {objetivo} está fuera del tablero.")
 
+        if not tablero.is_walkable(objetivo):
+            raise ValueError(f"El objetivo {objetivo} está sobre un obstáculo.")
 
-    if not tablero.is_walkable(objetivo):
-        raise ValueError("El objetivo está sobre un obstáculo.")
+        if objetivo in bloqueadas:
+            raise ValueError(f"El objetivo {objetivo} está bloqueado.")
 
-
-    if objetivo in bloqueadas:
-        raise ValueError("El objetivo está bloqueado.")
-
-
-    distancias: dict[Position, float] = {objetivo: 0.0}
-    cola = [(0.0, 0, objetivo)]  # (distancia, desempate, celda)
-    desempate = 1
-
+    distancias: dict[Position, float] = {meta: 0.0 for meta in metas}
+    cola = [
+        (0.0, desempate, meta)
+        for desempate, meta in enumerate(metas)
+    ]  # (distancia, desempate, celda)
+    heapq.heapify(cola)
+    desempate = len(metas)
 
     while cola:
         distancia, _, actual = heapq.heappop(cola)
         if distancia > distancias.get(actual, math.inf):
             continue
-
 
         # Para llegar a `actual` desde un vecino hay que pagar el costo de `actual`.
         costo_entrada = tablero.movement_cost(actual)
@@ -172,9 +189,68 @@ def crear_distancia_exacta(
                 heapq.heappush(cola, (nueva, desempate, vecino))
                 desempate += 1
 
+    return distancias
+
+
+def crear_distancia_exacta(
+    tablero: Board,
+    objetivo: Position,
+    bloqueadas: frozenset[Position] = frozenset(),
+) -> Callable[[Position], float]:
+    """
+    Purpose:
+        Construir la heurística de distancia exacta para una sola meta.
+
+    Preconditions:
+        `tablero` es un Board y `objetivo` es una celda transitable; `bloqueadas`
+        son celdas que la búsqueda no puede atravesar.
+
+    Postconditions:
+        Devuelve h(p) = costo real mínimo de p a la meta, o infinito si no hay ruta.
+        Entrar a una celda cuesta su costo de terreno, igual que en `ProblemaTablero`.
+
+    Complexity:
+        O(F*C*log(F*C)) una sola vez; O(1) por evaluación.
+
+    AI usage: Yes
+    AI intervention:
+        Envoltura de una meta sobre el núcleo multi-origen propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    return crear_distancia_exacta_multiple(tablero, (objetivo,), bloqueadas)
+
+
+def crear_distancia_exacta_multiple(
+    tablero: Board,
+    objetivos: Iterable[Position],
+    bloqueadas: frozenset[Position] = frozenset(),
+) -> Callable[[Position], float]:
+    """
+    Purpose:
+        Construir la heurística de distancia exacta para varias metas: el costo
+        real mínimo de llegar a cualquiera de ellas.
+
+    Preconditions:
+        `tablero` es un Board; `objetivos` es un iterable no vacío de Position
+        transitables y no bloqueadas; `bloqueadas` son celdas no transitables.
+
+    Postconditions:
+        Devuelve h(p) = costo real mínimo de p a la meta más cercana, o infinito
+        si no existe ruta. Es admisible y consistente.
+
+    Complexity:
+        O(F*C*log(F*C)) una sola vez; O(1) por evaluación.
+
+    AI usage: Yes
+    AI intervention:
+        Heurística multiobjetivo exacta propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    distancias = distancias_exactas(tablero, objetivos, bloqueadas)
 
     def heuristica(posicion: Position) -> float:
         return distancias.get(posicion, math.inf)
-
 
     return heuristica
