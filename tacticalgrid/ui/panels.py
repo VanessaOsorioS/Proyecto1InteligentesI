@@ -333,6 +333,140 @@ def dibujar_panel(
     _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y + 10, imagenes_terreno)
 
 
+COLUMNAS_INFORME = (
+    ("Turno", 60, "turno"),
+    ("Bando", 56, "bando"),
+    ("Unidad", 70, "unidad"),
+    ("Exito", 62, "exito"),
+    ("Costo", 72, "costo"),
+    ("Generados", 96, "estados_generados"),
+    ("Expandidos", 104, "estados_expandidos"),
+    ("Frontera", 92, "maximo_frontera"),
+    ("ms", 70, "tiempo_ms"),
+)
+
+
+def _formatear_celda(clave, valor) -> str:
+    """Convierte un valor del informe en texto corto para la tabla."""
+    if clave == "exito":
+        return "si" if valor else "no"
+    if clave == "costo":
+        return f"{valor:g}"
+    return str(valor)
+
+
+def dibujar_informe(pantalla, fuentes, informe, desplazamiento=0):
+    """
+    Purpose:
+        Dibujar la ventana emergente con el informe de la partida terminada.
+
+    Preconditions:
+        `informe` es el dict devuelto por `Partida.informe()`; `desplazamiento`
+        es el índice de la primera fila visible de la tabla por turno.
+
+    Postconditions:
+        Dibuja un velo oscuro y una caja centrada con el resumen, el camino del
+        portador y la tabla por turno. Devuelve (boton_cerrar, filas_visibles,
+        total_filas); no modifica el informe.
+
+    Complexity:
+        O(T + C), donde T es el número de turnos mostrados y C el largo del camino.
+
+    AI usage: Yes
+    AI intervention:
+        Ventana emergente de métricas propuesta con asistencia de IA.
+    Student validation:
+        Pendiente de revisión por el equipo.
+    """
+    ancho, alto = pantalla.get_size()
+    velo = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    velo.fill((0, 0, 0, 170))
+    pantalla.blit(velo, (0, 0))
+
+    caja = pygame.Rect(0, 0, min(940, ancho - 40), min(alto - 40, 660))
+    caja.center = pantalla.get_rect().center
+    pygame.draw.rect(pantalla, COLOR_PANEL, caja, border_radius=10)
+    pygame.draw.rect(pantalla, COLOR_BORDE, caja, width=2, border_radius=10)
+
+    x = caja.x + 20
+    ancho_util = caja.width - 40
+    y = caja.y + 16
+
+    def linea(texto, fuente, color=COLOR_TEXTO, separacion=4):
+        nonlocal y
+        for parte in _envolver(texto, fuente, ancho_util):
+            pantalla.blit(fuente.render(parte, True, color), (x, y))
+            y += fuente.get_height() + 2
+        y += separacion
+
+    linea("Informe de la partida", fuentes["titulo"], separacion=8)
+
+    algoritmo = informe["algoritmo"]
+    resumen = [
+        f"algoritmo: {algoritmo}",
+    ]
+    if algoritmo == "A*" or algoritmo.startswith("Beam"):
+        resumen.append(f"heuristica: {informe['heuristica']}")
+    resultado = informe["resultado"]
+    resumen.append(f"exito: {'true' if informe['exito'] else 'false'}")
+    if resultado["ganador"] is not None:
+        resumen.append(f"ganador: bando {resultado['ganador']} ({resultado['motivo']})")
+    else:
+        resumen.append(f"resultado: empate ({resultado['motivo']})")
+    resumen += [
+        f"turnos: {resultado['turnos']}",
+        f"costo: {informe['costo']:g}",
+        f"estados_generados: {informe['estados_generados']}",
+        f"estados_expandidos: {informe['estados_expandidos']}",
+        f"maximo_frontera: {informe['maximo_frontera']}",
+    ]
+    for texto in resumen:
+        linea(texto, fuentes["texto"], separacion=0)
+
+    camino = ", ".join(f"[{f}, {c}]" for f, c in informe["camino"]) or "(sin portador)"
+    linea(f"camino (portador del recurso): [{camino}]", fuentes["pequena"], COLOR_TEXTO_SUAVE, 8)
+
+    linea("Detalle por turno (solo turnos con busqueda)", fuentes["texto"], separacion=4)
+
+    cabecera_y = y
+    cx = x
+    for nombre, ancho_col, _ in COLUMNAS_INFORME:
+        pantalla.blit(fuentes["id"].render(nombre, True, COLOR_TEXTO_SUAVE), (cx, cabecera_y))
+        cx += ancho_col
+    y = cabecera_y + fuentes["id"].get_height() + 6
+
+    boton = Boton(
+        pygame.Rect(caja.centerx - 70, caja.bottom - 46, 140, 32), "Cerrar", "Cerrar"
+    )
+    pista_y = boton.rect.top - fuentes["pequena"].get_height() - 6
+    pista = "Rueda del raton o flechas: desplazar la tabla"
+    pantalla.blit(
+        fuentes["pequena"].render(pista, True, COLOR_TEXTO_SUAVE),
+        (caja.centerx - fuentes["pequena"].size(pista)[0] // 2, pista_y),
+    )
+
+    filas = informe["turnos"]
+    alto_fila = fuentes["pequena"].get_height() + 4
+    visibles = max(0, (pista_y - 8 - y) // alto_fila)
+    for indice, fila in enumerate(filas[desplazamiento : desplazamiento + visibles]):
+        cx = x
+        for nombre, ancho_col, clave in COLUMNAS_INFORME:
+            texto = _formatear_celda(clave, fila[clave])
+            pantalla.blit(
+                fuentes["pequena"].render(texto, True, COLOR_TEXTO), (cx, y + indice * alto_fila)
+            )
+            cx += ancho_col
+
+    if not filas:
+        pantalla.blit(
+            fuentes["pequena"].render("Sin turnos con busqueda.", True, COLOR_TEXTO_SUAVE),
+            (x, y),
+        )
+
+    _dibujar_boton(pantalla, boton, fuentes["texto"])
+    return boton, visibles, len(filas)
+
+
 def _dibujar_boton(pantalla, boton, fuente, habilitado=True) -> None:
     """Dibuja el botón, resaltándolo si está habilitado y el puntero está encima."""
     if habilitado:

@@ -66,6 +66,31 @@ HEURISTICA_POR_DEFECTO = "Manhattan"
 
 
 @dataclass(frozen=True)
+class RegistroBusqueda:
+    """Datos estructurados de la búsqueda que decidió un movimiento.
+
+    Attributes:
+        unidad: Identificador de la unidad que buscó la ruta.
+        exito: Si la búsqueda encontró camino.
+        camino: Celdas (fila, columna) desde la posición actual hasta la meta.
+        costo: Costo del camino encontrado.
+        generados: Estados insertados en la frontera.
+        expandidos: Estados expandidos.
+        frontera_maxima: Mayor tamaño de la frontera.
+        tiempo_ms: Tiempo total de la búsqueda en milisegundos.
+    """
+
+    unidad: str
+    exito: bool
+    camino: tuple[tuple[int, int], ...]
+    costo: float
+    generados: int
+    expandidos: int
+    frontera_maxima: int
+    tiempo_ms: float
+
+
+@dataclass(frozen=True)
 class PasoPartida:
     """Registro de un turno ejecutado.
 
@@ -74,12 +99,18 @@ class PasoPartida:
         bando: Bando que jugó.
         descripcion: Texto legible de la acción.
         metricas: Resumen de la decisión (nodos, tiempo, etc.).
+        busqueda: Datos de la búsqueda, o None si la acción no usó búsqueda.
+        portador: Unidad que lleva el recurso tras la acción, o None.
+        posicion_portador: Celda (fila, columna) del portador tras la acción.
     """
 
     numero_turno: int
     bando: str
     descripcion: str
     metricas: str
+    busqueda: RegistroBusqueda | None = None
+    portador: str | None = None
+    posicion_portador: tuple[int, int] | None = None
 
 
 def describir_accion(accion: Accion) -> str:
@@ -167,6 +198,7 @@ class Partida:
         self.resultado: Resultado | None = resultado_partida(estado, scenario)
         self.historial: list[PasoPartida] = []
         self._posicion_previa: dict[str, Position] = {}
+        self._ultima_busqueda: tuple[ResultadoBusqueda, str] | None = None
         self._costo_minimo = min(
             (
                 terreno.cost
@@ -207,7 +239,9 @@ class Partida:
             return None
 
         estado = self.estado
+        self._ultima_busqueda = None
         accion, texto = self._decidir(estado)
+        busqueda = self._ultima_busqueda
         posiciones_antes = {
             unidad.id: unidad.posicion for unidad in estado.unidades
         }
@@ -218,11 +252,36 @@ class Partida:
                 accion.unidad_id
             ]
 
+        portador = siguiente.unidad(siguiente.portador) if siguiente.portador else None
+        registro = None
+        if busqueda is not None:
+            resultado, unidad_id = busqueda
+            m = resultado.metricas
+            registro = RegistroBusqueda(
+                unidad=unidad_id,
+                exito=resultado.exito,
+                camino=tuple(
+                    (celda.row, celda.column) for celda in resultado.camino
+                ),
+                costo=float(resultado.costo),
+                generados=m.generados,
+                expandidos=m.expandidos,
+                frontera_maxima=m.frontera_maxima,
+                tiempo_ms=m.tiempo_segundos * 1000,
+            )
+
         paso = PasoPartida(
             numero_turno=estado.numero_turno,
             bando=estado.turno,
             descripcion=describir_accion(accion),
             metricas=texto,
+            busqueda=registro,
+            portador=portador.id if portador else None,
+            posicion_portador=(
+                (portador.posicion.row, portador.posicion.column)
+                if portador
+                else None
+            ),
         )
 
         self.anterior = estado
@@ -230,6 +289,83 @@ class Partida:
         self.resultado = resultado_partida(siguiente, self.scenario)
         self.historial.append(paso)
         return paso
+
+    def informe(self) -> dict:
+        """
+        Purpose:
+            Resumir la partida en la estructura de comparación de algoritmos:
+            resultado, camino del recurso y métricas de búsqueda acumuladas.
+
+        Preconditions:
+            Ninguna; funciona con la partida en curso o terminada.
+
+        Postconditions:
+            Devuelve un dict con 'algoritmo', 'exito' (victoria de un bando),
+            'resultado', 'camino' (celdas por las que pasó el portador del
+            recurso, sin repetir celdas consecutivas), 'costo' (suma de costos
+            de las rutas planificadas), 'estados_generados', 'estados_expandidos',
+            'maximo_frontera' y 'turnos' (detalle por turno con búsqueda). No
+            modifica la partida.
+
+        Complexity:
+            O(T), donde T es el número de turnos ejecutados.
+
+        AI usage: Yes
+        AI intervention:
+            Agregación de métricas para el informe propuesta con asistencia de IA.
+        Student validation:
+            Pendiente de revisión por el equipo.
+        """
+        camino: list[list[int]] = []
+        for paso in self.historial:
+            if paso.posicion_portador is None:
+                continue
+            celda = list(paso.posicion_portador)
+            if not camino or camino[-1] != celda:
+                camino.append(celda)
+
+        turnos = []
+        generados = expandidos = frontera = 0
+        costo = 0.0
+        for paso in self.historial:
+            b = paso.busqueda
+            if b is None:
+                continue
+            generados += b.generados
+            expandidos += b.expandidos
+            frontera = max(frontera, b.frontera_maxima)
+            costo += b.costo
+            turnos.append(
+                {
+                    "turno": paso.numero_turno,
+                    "bando": paso.bando,
+                    "unidad": b.unidad,
+                    "exito": b.exito,
+                    "costo": b.costo,
+                    "estados_generados": b.generados,
+                    "estados_expandidos": b.expandidos,
+                    "maximo_frontera": b.frontera_maxima,
+                    "tiempo_ms": round(b.tiempo_ms, 2),
+                }
+            )
+
+        resultado = self.resultado
+        return {
+            "algoritmo": self.algoritmo,
+            "heuristica": self.heuristica,
+            "exito": bool(resultado and resultado.ganador is not None),
+            "resultado": {
+                "ganador": resultado.ganador if resultado else None,
+                "motivo": resultado.motivo if resultado else None,
+                "turnos": len(self.historial),
+            },
+            "camino": camino,
+            "costo": costo,
+            "estados_generados": generados,
+            "estados_expandidos": expandidos,
+            "maximo_frontera": frontera,
+            "turnos": turnos,
+        }
 
     def posiciones_previas(self) -> dict[str, tuple[int, int]]:
         """Devuelve la posición de cada unidad antes del último turno (para animar)."""
@@ -363,6 +499,7 @@ class Partida:
                 resultado = alternativa
                 destino = alternativa.camino[1]
 
+        self._ultima_busqueda = (resultado, unidad.id)
         m = resultado.metricas
         texto = (
             f"{unidad.id}: costo {resultado.costo:g}, gen {m.generados}, "

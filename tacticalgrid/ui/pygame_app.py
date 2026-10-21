@@ -15,7 +15,11 @@ from tacticalgrid.app.controller import (
     vista_de_estado,
     ScenarioVista,
 )
-from tacticalgrid.app.partida import ALGORITMOS_DECISION, HEURISTICA_POR_DEFECTO
+from tacticalgrid.app.partida import (
+    ALGORITMOS_BUSQUEDA,
+    ALGORITMOS_DECISION,
+    HEURISTICA_POR_DEFECTO,
+)
 from tacticalgrid.io.scenario_validator import ScenarioValidationError
 from tacticalgrid.ui import panels, renderer
 
@@ -66,6 +70,11 @@ class PygameApp:
         self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
         self.partida = None
         self.ultimo_paso_ms: int | None = None
+        self.mostrar_informe = False
+        self.informe_desplazamiento = 0
+        self.boton_cerrar_informe = None
+        self.informe_visibles = 0
+        self.informe_total = 0
 
         if ruta_inicial and os.path.exists(ruta_inicial):
             self.cargar(ruta_inicial)
@@ -126,6 +135,7 @@ class PygameApp:
         """
         self.partida = None
         self.ultimo_paso_ms = None
+        self.mostrar_informe = False
         self.algoritmo_seleccionado = None
         self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
         self.boton_ejecutar = None
@@ -147,6 +157,7 @@ class PygameApp:
             )
             self.algoritmo_seleccionado = algoritmo
             self.ultimo_paso_ms = None
+            self.mostrar_informe = False
             self.error = None
         except (ValueError, OSError) as error:
             self.error = f"No se pudo iniciar la partida: {error}"
@@ -228,6 +239,7 @@ class PygameApp:
         if self._usa_heuristica(algoritmo):
             self.partida = None
             self.ultimo_paso_ms = None
+            self.mostrar_informe = False
             self.algoritmo_seleccionado = algoritmo
             self.error = None
             return
@@ -263,6 +275,7 @@ class PygameApp:
             return
         self.partida = None
         self.ultimo_paso_ms = None
+        self.mostrar_informe = False
         self.algoritmo_seleccionado = None
         self.heuristica_seleccionada = HEURISTICA_POR_DEFECTO
         self.boton_ejecutar = None
@@ -282,6 +295,9 @@ class PygameApp:
                 self.partida = None
                 return
             self.ultimo_paso_ms = ahora
+            if self.partida.terminada and self.partida.algoritmo in ALGORITMOS_BUSQUEDA:
+                self.mostrar_informe = True
+                self.informe_desplazamiento = 0
 
     def _progreso_animacion(self):
         """Devuelve (posiciones previas, progreso en [0, 1]) para animar la ficha."""
@@ -311,6 +327,9 @@ class PygameApp:
                 self.pantalla = pygame.display.set_mode(
                     (evento.w, evento.h), pygame.RESIZABLE
                 )
+            if self.mostrar_informe:
+                self._procesar_evento_informe(evento)
+                continue
             if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
                 if self.boton and self.boton.contiene(evento.pos):
                     ruta = self._elegir_archivo()
@@ -333,6 +352,23 @@ class PygameApp:
                         if self._puede_configurar() and boton.contiene(evento.pos):
                             self.heuristica_seleccionada = boton.clave
                             break
+
+    def _procesar_evento_informe(self, evento) -> None:
+        """Atiende cerrar y desplazar la tabla de la ventana de informe."""
+        maximo = max(0, self.informe_total - self.informe_visibles)
+        if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+            if self.boton_cerrar_informe and self.boton_cerrar_informe.contiene(evento.pos):
+                self.mostrar_informe = False
+        elif evento.type == pygame.MOUSEWHEEL:
+            desplazado = self.informe_desplazamiento - evento.y
+            self.informe_desplazamiento = min(maximo, max(0, desplazado))
+        elif evento.type == pygame.KEYDOWN:
+            if evento.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+                self.mostrar_informe = False
+            elif evento.key == pygame.K_DOWN:
+                self.informe_desplazamiento = min(maximo, self.informe_desplazamiento + 1)
+            elif evento.key == pygame.K_UP:
+                self.informe_desplazamiento = max(0, self.informe_desplazamiento - 1)
 
     def _elegir_archivo(self) -> str | None:
         """Abre el diálogo nativo para seleccionar un archivo .json."""
@@ -441,4 +477,13 @@ class PygameApp:
             heuristicas_habilitadas=self._puede_configurar(),
             heuristica_hud=heuristica_mostrada,
         )
+        if self.mostrar_informe and self.partida is not None:
+            self.boton_cerrar_informe, self.informe_visibles, self.informe_total = (
+                panels.dibujar_informe(
+                    self.pantalla,
+                    self.fuentes,
+                    self.partida.informe(),
+                    self.informe_desplazamiento,
+                )
+            )
         pygame.display.flip()
