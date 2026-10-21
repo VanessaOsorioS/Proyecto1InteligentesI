@@ -56,12 +56,6 @@ def _firma_tablero(tablero: Board) -> tuple:
 
     Complexity:
         O(T log T), T cantidad de tipos de terreno.
-
-    AI usage: Yes
-    AI intervention:
-        Huella de tablero propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     terrenos = tuple(
         sorted(
@@ -96,11 +90,6 @@ def _mapa_distancias(
     Complexity:
         O(F*C*log(F*C)) en el primer cálculo; O(1) en aciertos de caché.
 
-    AI usage: Yes
-    AI intervention:
-        Caché de mapas de distancia propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     filas, columnas, celdas, terrenos = firma
     tablero = Board(
@@ -134,11 +123,6 @@ def _maximo_finito(mapa: dict[Position, float]) -> float:
     Complexity:
         O(N), N cantidad de posiciones del mapa.
 
-    AI usage: Yes
-    AI intervention:
-        Normalización auxiliar propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     finitos = [costo for costo in mapa.values() if math.isfinite(costo)]
     return max(finitos) if finitos else 0.0
@@ -158,12 +142,6 @@ def _normalizar(costo: float, maximo: float) -> float:
 
     Complexity:
         O(1).
-
-    AI usage: Yes
-    AI intervention:
-        Normalización de la distancia exacta propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if not math.isfinite(costo):
         return 1.0
@@ -195,11 +173,6 @@ def _distancia_normalizada(
     Complexity:
         O(F*C*log(F*C)) en el primer cálculo y O(1) con caché.
 
-    AI usage: Yes
-    AI intervention:
-        Distancia exacta con ocupación propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     firma = _firma_tablero(scenario.tablero)
     maximo = _maximo_finito(_mapa_distancias(firma, objetivo, frozenset()))
@@ -228,11 +201,6 @@ def _minima_distancia_a(
     Complexity:
         O(U * F*C*log(F*C)) sin caché; O(U) con mapas cacheados.
 
-    AI usage: Yes
-    AI intervention:
-        Distancia mínima propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     distancias = [
         _distancia_normalizada(estado, unidad, objetivo, scenario)
@@ -260,11 +228,6 @@ def _unidades_adyacentes_a(
     Complexity:
         O(U), U cantidad de unidades del bando.
 
-    AI usage: Yes
-    AI intervention:
-        Conteo de adyacencias propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     return sum(
         1
@@ -294,11 +257,6 @@ def _progreso_portador(
     Complexity:
         O(F*C*log(F*C)) en el primer cálculo; O(1) con caché.
 
-    AI usage: Yes
-    AI intervention:
-        Progreso con distancia exacta propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if base is None:
         return 0.0
@@ -323,11 +281,6 @@ def utilidad_terminal(
     Complexity:
         O(U), donde U es el número de unidades.
 
-    AI usage: Yes
-    AI intervention:
-        Función auxiliar propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if bando_max not in ("A", "B"):
         raise ValueError("El bando MAX debe ser 'A' o 'B'.")
@@ -365,12 +318,6 @@ def evaluar_estado(estado: GameState, scenario: Scenario, bando_max: str) -> flo
 
     Complexity:
         O(U * F*C*log(F*C)) en el peor caso sin caché; O(U) con mapas cacheados.
-
-    AI usage: Yes
-    AI intervention:
-        Función de evaluación propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if bando_max not in ("A", "B"):
         raise ValueError("El bando MAX debe ser 'A' o 'B'.")

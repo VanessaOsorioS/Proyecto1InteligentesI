@@ -69,12 +69,6 @@ def construir_boton_ejecutar(rect_panel: pygame.Rect, y_inicio: int) -> Boton:
 
     Complexity:
         O(1).
-
-    AI usage: Yes
-    AI intervention:
-        Botón de ejecución propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     rect = pygame.Rect(rect_panel.x + 16, y_inicio, rect_panel.width - 32, 32)
     return Boton(rect, "Ejecutar", "Ejecutar")
@@ -102,12 +96,6 @@ def construir_botones_algoritmos(
 
     Complexity:
         O(N), N cantidad de algoritmos.
-
-    AI usage: Yes
-    AI intervention:
-        Rejilla de botones propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     columnas = max(1, columnas)
     ancho_util = rect_panel.width - 32
@@ -147,11 +135,6 @@ def construir_botones_heuristicas(
     Complexity:
         O(N), N cantidad de heurísticas.
 
-    AI usage: Yes
-    AI intervention:
-        Botones de heurística propuestos con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     return construir_botones_algoritmos(rect_panel, y_inicio, nombres, columnas)
 
@@ -170,12 +153,6 @@ def dibujar_algoritmos(pantalla, fuentes, botones, seleccionado, habilitado) -> 
 
     Complexity:
         O(N), N cantidad de botones.
-
-    AI usage: Yes
-    AI intervention:
-        Dibujo de botones propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if not botones:
         return 0
@@ -243,11 +220,6 @@ def dibujar_panel(
         O(T + U + N + H + L), T terrenos, U unidades, N algoritmos, H heurísticas,
         L líneas de partida.
 
-    AI usage: Yes
-    AI intervention:
-        Panel con selector de heurística propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     pygame.draw.rect(pantalla, COLOR_PANEL, rect_panel)
     pygame.draw.line(
@@ -372,11 +344,6 @@ def dibujar_informe(pantalla, fuentes, informe, desplazamiento=0):
     Complexity:
         O(T + C), donde T es el número de turnos mostrados y C el largo del camino.
 
-    AI usage: Yes
-    AI intervention:
-        Ventana emergente de métricas propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     ancho, alto = pantalla.get_size()
     velo = pygame.Surface((ancho, alto), pygame.SRCALPHA)
@@ -520,12 +487,6 @@ def _dibujar_leyenda(pantalla, vista, fuentes, rect_panel, y, imagenes_terreno=N
 
     Complexity:
         O(T), T terrenos del escenario.
-
-    AI usage: Yes
-    AI intervention:
-        Miniatura de terreno propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     y = _dibujar_texto(pantalla, "Leyenda", fuentes["texto"], COLOR_TEXTO, rect_panel, y, 8)
 

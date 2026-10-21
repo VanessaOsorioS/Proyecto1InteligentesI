@@ -119,12 +119,6 @@ def dibujar_tablero(
 
     Complexity:
         O(F * C + U), F filas, C columnas, U unidades.
-
-    AI usage: Yes
-    AI intervention:
-        Rutinas de dibujo propuestas con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     for fila in range(vista.filas):
         for columna in range(vista.columnas):
@@ -212,11 +206,6 @@ def _dibujar_costo(pantalla, rect, costo, fuente, con_fondo=False) -> None:
     Complexity:
         O(1) más el coste de dibujar el texto.
 
-    AI usage: Yes
-    AI intervention:
-        Ajuste de contraste sobre imágenes propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     if con_fondo:
         fondo = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
@@ -305,12 +294,6 @@ def _dibujar_bandera_portador(pantalla, centro, lado, imagen=None) -> None:
 
     Complexity:
         O(1) más el coste de dibujar la imagen.
-
-    AI usage: Yes
-    AI intervention:
-        Rutina de dibujo propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     lado = max(8, int(lado))
 
@@ -341,12 +324,6 @@ def _desplazamientos_apilados(cantidad: int, lado: float) -> list[tuple[float, f
 
     Complexity:
         O(cantidad).
-
-    AI usage: No
-    AI intervention:
-        Ninguna.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if cantidad <= 1:
         return [(0.0, 0.0)]
@@ -394,11 +371,6 @@ def _dibujar_unidades(
     Complexity:
         O(U), U unidades.
 
-    AI usage: Yes
-    AI intervention:
-        Sustitución de discos por sprites propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     radio = max(6, int(layout.lado * 0.30))
     animar = bool(previas) and progreso < 1.0
@@ -509,12 +481,6 @@ def _fuente_id(lado):
 
     Complexity:
         O(1) esperado tras la primera llamada por tamaño.
-
-    AI usage: Yes
-    AI intervention:
-        Escalado del identificador propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     tamano = max(11, int(lado * 0.13))
     fuente = _CACHE_FUENTES.get(tamano)
@@ -540,12 +506,6 @@ def _imagen_de_mapa(imagenes, nombre):
 
     Complexity:
         O(1) esperado.
-
-    AI usage: Yes
-    AI intervention:
-        Normalización del nombre propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     if not imagenes:
         return None
@@ -566,12 +526,6 @@ def _escalar_imagen(imagen, ancho, alto, conservar_proporcion=True):
 
     Complexity:
         O(1) en aciertos de caché y O(A * B) al escalar, A y B destino.
-
-    AI usage: Yes
-    AI intervention:
-        Caché por tamaño propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     ancho = max(1, int(ancho))
     alto = max(1, int(alto))

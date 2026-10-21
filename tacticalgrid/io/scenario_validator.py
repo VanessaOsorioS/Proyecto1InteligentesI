@@ -21,12 +21,6 @@ def validate_scenario(data: dict[str, Any]) -> None:
         O(F * C + U + T), donde:
         F = filas, C = columnas,
         U = unidades, T = tipos de terreno.
-
-    AI usage: Yes
-    AI intervention:
-        Implementación inicial propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     if not isinstance(data, dict):
         raise ScenarioValidationError(
@@ -231,11 +225,6 @@ def validate_units(data: dict) -> None:
     Complexity:
         O(U), donde U es el número de unidades.
 
-    AI usage: No
-    AI intervention:
-        Ninguna.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
 
     unidades = data["unidades"]

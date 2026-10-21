@@ -94,12 +94,6 @@ class PygameApp:
 
         Complexity:
             O(P), P píxeles de la imagen.
-
-        AI usage: Yes
-        AI intervention:
-            Carga tolerante a errores y recorte propuestos con asistencia de IA.
-        Student validation:
-            Pendiente de pruebas y revisión por el equipo.
         """
         ruta = os.path.join(os.path.dirname(__file__), "assets", archivo)
         try:
@@ -126,12 +120,6 @@ class PygameApp:
 
         Complexity:
             O(F * C + U), la del cargador del escenario.
-
-        AI usage: Yes
-        AI intervention:
-            Manejo de errores propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de pruebas y revisión por el equipo.
         """
         self.partida = None
         self.ultimo_paso_ms = None
@@ -176,12 +164,6 @@ class PygameApp:
 
         Complexity:
             O(1).
-
-        AI usage: Yes
-        AI intervention:
-            Clasificación de algoritmos informados propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         return algoritmo == "A*" or (
             algoritmo is not None and algoritmo.startswith("Beam")
@@ -202,12 +184,6 @@ class PygameApp:
 
         Complexity:
             O(1).
-
-        AI usage: Yes
-        AI intervention:
-            Regla de habilitación de controles propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         return (
             self.vista is not None
@@ -230,11 +206,6 @@ class PygameApp:
         Complexity:
             O(1) para A*/Beam; la de `_iniciar_partida` en los demás.
 
-        AI usage: Yes
-        AI intervention:
-            Separación entre selección y ejecución propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         if self._usa_heuristica(algoritmo):
             self.partida = None
@@ -258,12 +229,6 @@ class PygameApp:
 
         Complexity:
             La de `_iniciar_partida`; O(1) si no se ejecuta.
-
-        AI usage: Yes
-        AI intervention:
-            Acción del botón Ejecutar propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         if not self._puede_configurar():
             return

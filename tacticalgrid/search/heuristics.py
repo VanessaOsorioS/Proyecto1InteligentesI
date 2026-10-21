@@ -47,11 +47,6 @@ def crear_manhattan(objetivo: Position, costo_minimo: float = 1) -> Callable[[Po
     Complexity:
         O(1) por evaluación.
 
-    AI usage: Yes
-    AI intervention:
-        Heurística Manhattan propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if not isinstance(objetivo, Position):
         raise ValueError("El objetivo debe ser una Position.")
@@ -91,12 +86,6 @@ def crear_manhattan_multiple(
 
     Complexity:
         O(K) por evaluación, con K objetivos.
-
-    AI usage: Yes
-    AI intervention:
-        Generalización de la heurística Manhattan propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     metas = tuple(objetivos)
     if not metas or any(not isinstance(g, Position) for g in metas):
@@ -136,12 +125,6 @@ def distancias_exactas(
 
     Complexity:
         O(F*C*log(F*C)) una sola vez, F filas y C columnas.
-
-    AI usage: Yes
-    AI intervention:
-        Generalización multi-origen del Dijkstra inverso propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     metas = tuple(objetivos)
     if not metas:
@@ -212,11 +195,6 @@ def crear_distancia_exacta(
     Complexity:
         O(F*C*log(F*C)) una sola vez; O(1) por evaluación.
 
-    AI usage: Yes
-    AI intervention:
-        Envoltura de una meta sobre el núcleo multi-origen propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     return crear_distancia_exacta_multiple(tablero, (objetivo,), bloqueadas)
 
@@ -241,12 +219,6 @@ def crear_distancia_exacta_multiple(
 
     Complexity:
         O(F*C*log(F*C)) una sola vez; O(1) por evaluación.
-
-    AI usage: Yes
-    AI intervention:
-        Heurística multiobjetivo exacta propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     distancias = distancias_exactas(tablero, objetivos, bloqueadas)
 

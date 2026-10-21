@@ -42,9 +42,6 @@ def dfs(problema: Problema) -> ResultadoBusqueda:
     Complexity:
         Tiempo O(V + E), espacio O(V) para el recorrido de un
         grafo finito con conjunto de visitados.
-
-    Student validation:
-        Pendiente de ejecución y comprobación por el equipo.
     """
 
     inicio_tiempo = perf_counter()

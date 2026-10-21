@@ -126,12 +126,6 @@ def describir_accion(accion: Accion) -> str:
 
     Complexity:
         O(1).
-
-    AI usage: Yes
-    AI intervention:
-        Formateo de texto propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if isinstance(accion, Mover):
         return f"{accion.unidad_id} -> fila {accion.destino.row}, col {accion.destino.column}"
@@ -177,12 +171,6 @@ class Partida:
 
         Complexity:
             O(T), donde T es el número de tipos de terreno.
-
-        AI usage: Yes
-        AI intervention:
-            Clase propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de ejecución y validación del equipo.
         """
         if algoritmo not in ALGORITMOS:
             raise ValueError(f"Algoritmo desconocido: '{algoritmo}'.")
@@ -228,12 +216,6 @@ class Partida:
         Complexity:
             Depende del algoritmo: en Minimax/Alfa-Beta O(b^d) nodos; en búsqueda
             O(U * (V + E)) para U unidades propias.
-
-        AI usage: Yes
-        AI intervention:
-            Bucle de turnos propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de ejecución y validación del equipo.
         """
         if self.terminada:
             return None
@@ -309,12 +291,6 @@ class Partida:
 
         Complexity:
             O(T), donde T es el número de turnos ejecutados.
-
-        AI usage: Yes
-        AI intervention:
-            Agregación de métricas para el informe propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         camino: list[list[int]] = []
         for paso in self.historial:
@@ -437,12 +413,6 @@ class Partida:
             O(U * S + A * S + M * S), donde U es el número de unidades propias,
             A el de aliados adyacentes, M el de movimientos legales y S el costo
             del algoritmo de búsqueda seleccionado.
-
-        AI usage: Yes
-        AI intervention:
-            Selección de acciones y transferencia propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         legales = acciones_legales(estado, self.scenario)
 
@@ -529,11 +499,6 @@ class Partida:
             O((A + 1) * S), donde A es el número de aliados adyacentes y S el
             costo del algoritmo de búsqueda seleccionado.
 
-        AI usage: Yes
-        AI intervention:
-            Criterio de transferencia por turnos propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         if estado.portador is None:
             return None
@@ -606,12 +571,6 @@ class Partida:
 
         Complexity:
             O(S), donde S es el costo del algoritmo de búsqueda seleccionado.
-
-        AI usage: Yes
-        AI intervention:
-            Medición de rutas para transferencias propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         if unidad.posicion == base:
             return 0.0, None
@@ -651,11 +610,6 @@ class Partida:
         Complexity:
             O(S), donde S es el costo del algoritmo de búsqueda seleccionado.
 
-        AI usage: Yes
-        AI intervention:
-            Estrategia anti-oscilación propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         anterior = self._posicion_previa.get(unidad.id)
         if anterior is None or anterior in objetivos:
@@ -692,12 +646,6 @@ class Partida:
         Complexity:
             O(M * S), donde M es el número de movimientos legales y S el costo
             del algoritmo de búsqueda seleccionado.
-
-        AI usage: Yes
-        AI intervention:
-            Desempate por despeje de ruta propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         if estado.portador is None:
             return None
@@ -777,12 +725,6 @@ class Partida:
 
         Complexity:
             O(M), donde M es el número de acciones legales.
-
-        AI usage: Yes
-        AI intervention:
-            Regla de respaldo anti-repetición propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         for accion in legales:
             if not isinstance(accion, Mover):
@@ -808,12 +750,6 @@ class Partida:
 
         Complexity:
             O(U), donde U es el número de unidades.
-
-        AI usage: No
-        AI intervention:
-            Ninguna.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         bando = unidad.bando
         tablero = self.scenario.tablero
@@ -849,12 +785,6 @@ class Partida:
         Complexity:
             La del algoritmo seleccionado; la distancia exacta añade una
             construcción O(F*C*log(F*C)) antes de A* o Beam.
-
-        AI usage: Yes
-        AI intervention:
-            Selección de heurística propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         nombre = self.algoritmo
         if nombre == "BFS":

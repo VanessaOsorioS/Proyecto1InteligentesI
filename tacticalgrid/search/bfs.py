@@ -43,10 +43,6 @@ def bfs(problema: Problema) -> ResultadoBusqueda:
         Tiempo O(V + E), espacio O(V + E) considerando
         la estructura de sucesores y el almacenamiento
         del árbol de búsqueda.
-
-
-    Student validation:
-        Pendiente de ejecución y validación del equipo.
     """
 
     inicio_tiempo = perf_counter()

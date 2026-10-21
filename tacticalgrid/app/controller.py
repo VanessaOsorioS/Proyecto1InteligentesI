@@ -36,12 +36,6 @@ def algoritmos_disponibles() -> tuple[str, ...]:
 
     Complexity:
         O(1).
-
-    AI usage: Yes
-    AI intervention:
-        Catálogo de algoritmos expuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     return ALGORITMOS_DISPONIBLES
 
@@ -60,11 +54,6 @@ def heuristicas_disponibles() -> tuple[str, ...]:
     Complexity:
         O(1).
 
-    AI usage: Yes
-    AI intervention:
-        Catálogo de heurísticas expuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     return HEURISTICAS
 
@@ -89,12 +78,6 @@ def nueva_partida(
 
     Complexity:
         O(F * C + U + T) por la reconstrucción del modelo.
-
-    AI usage: Yes
-    AI intervention:
-        Adaptador vista -> partida propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de ejecución y validación del equipo.
     """
     modelo = cargar_modelo(vista.ruta)
     return Partida(modelo.scenario, modelo.estado, algoritmo, heuristica)
@@ -114,12 +97,6 @@ def vista_de_estado(vista: "ScenarioVista", estado: GameState) -> "ScenarioVista
 
     Complexity:
         O(U), donde U es el número de unidades.
-
-    AI usage: Yes
-    AI intervention:
-        Proyección del estado a la vista propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     unidades = tuple(
         UnidadVista(u.id, u.bando, u.posicion.row, u.posicion.column)
@@ -174,11 +151,6 @@ def cargar_escenario(ruta: str) -> ScenarioVista:
     Complexity:
         O(F * C + U + T), F filas, C columnas, U unidades, T tipos de terreno.
 
-    AI usage: Yes
-    AI intervention:
-        Adaptador dict -> vista propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de pruebas y revisión por el equipo.
     """
     datos = load_scenario(ruta)
 

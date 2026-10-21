@@ -49,9 +49,6 @@ def ucs(problema: Problema) -> ResultadoBusqueda:
         realizadas en la cola de prioridad; para este tablero con
         grado máximo 4 es O((V + E) log (V + E)) y el espacio
         O(V + E), bajo el supuesto de costos no negativos.
-
-    Student validation:
-        Pendiente de ejecución y comprobación por el equipo.
     """
 
     inicio_tiempo = perf_counter()

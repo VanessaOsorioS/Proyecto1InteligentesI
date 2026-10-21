@@ -173,12 +173,6 @@ class ProblemaMultiobjetivo(ProblemaTablero):
 
         Complexity:
             O(K), donde K es el número de objetivos.
-
-        AI usage: Yes
-        AI intervention:
-            Subclase propuesta con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         objetivos = frozenset(objetivos)
         if not objetivos:

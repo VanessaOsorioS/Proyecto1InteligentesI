@@ -23,11 +23,6 @@ def verificar_camino(problema: Problema, resultado: ResultadoBusqueda) -> None:
         O(L), donde L es la longitud del camino (con a lo sumo cuatro sucesores
         por nodo).
 
-    AI usage: Yes
-    AI intervention:
-        Verificador propuesto con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if not resultado.exito:
         return

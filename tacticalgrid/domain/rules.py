@@ -181,12 +181,6 @@ def puede_ocupar_celda(
 
     Complexity:
         O(U), donde U es el número de unidades.
-
-    AI usage: No
-    AI intervention:
-        Ninguna.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if not scenario.tablero.is_inside(destino):
         return False

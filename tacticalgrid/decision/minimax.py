@@ -32,11 +32,6 @@ def profundidad_efectiva(scenario: Scenario, profundidad: int | None = None) -> 
     Complexity:
         O(1).
 
-    AI usage: Yes
-    AI intervention:
-        Función auxiliar propuesta con asistencia de IA.
-    Student validation:
-        Pendiente de revisión por el equipo.
     """
     if profundidad is not None:
         if type(profundidad) is not int or profundidad < 1:
@@ -129,13 +124,6 @@ def minimax(
         Espacio: O(d * b) adicional por la pila de recursión y las colecciones
         de acciones de cada nivel.
 
-    Student validation:
-        Pendiente de ejecución y validación del equipo.
-
-    AI usage: Yes
-    AI intervention:
-        Algoritmo implementado con asistencia de IA (guía del plan aprobado
-        por el equipo).
     """
     if bando_max is None:
         bando_max = estado.turno

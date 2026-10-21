@@ -58,12 +58,6 @@ class ContadorMetricas:
 
         Complexity:
             O(1).
-
-        AI usage: Yes
-        AI intervention:
-            Contador auxiliar propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         self._profundidad = max(self._profundidad, nivel)
 
@@ -81,11 +75,6 @@ class ContadorMetricas:
         Complexity:
             O(1).
 
-        AI usage: Yes
-        AI intervention:
-            Contador auxiliar propuesto con asistencia de IA.
-        Student validation:
-            Pendiente de revisión por el equipo.
         """
         return MetricasDecision(
             generados=self.generados,
